@@ -12,7 +12,7 @@ bot2 = telebot.TeleBot(API_TOKEN_2)
 output_dir = 'downloads/'
 
 # Path to the cookies file
-cookies_file = '/home/gauravbhalara/cookies.txt'
+cookies_file = 'cookies.txt'
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
