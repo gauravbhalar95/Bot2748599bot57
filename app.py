@@ -5,7 +5,7 @@ import yt_dlp
 import os
 
 # Bot 2: Media Downloader
-API_TOKEN_2 = '7511959076:AAFiaIsL8Anb9vcROywHzVJ_FiRYXhtVetQ'
+API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
 # Directory to save downloaded files
