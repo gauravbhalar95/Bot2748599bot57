@@ -70,7 +70,7 @@ def getMessage_bot2():
 def webhook():
     bot2.remove_webhook()
     # Replace 'your-replit-url' with your actual Replit URL
-    bot2.set_webhook(url='https://b56b48ec-74b1-45a0-a857-4dcb43b3563d-00-195k50i8quivj.riker.replit.dev/' + API_TOKEN_2)
+    bot2.set_webhook(url='https://bot2-mb9e.onrender.com/' + API_TOKEN_2)
     return "Webhook set", 200
 
 if __name__ == "__main__":
