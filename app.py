@@ -98,7 +98,7 @@ def getMessage_bot2():
 def webhook():
     bot2.remove_webhook()
     # Replace 'your-render-url' with your actual Render or any other host URL
-    bot2.set_webhook(url='https://your-render-url.com/' + API_TOKEN_2, timeout=60)
+    bot2.set_webhook(url='https://bot2-mb9e.onrender.com/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
