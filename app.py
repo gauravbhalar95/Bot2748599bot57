@@ -36,24 +36,18 @@ def download_media(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
-        }]
+        }],
+        'cookiefile': cookies_file
     }
 
-    # Use yt-dlp to download the media
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(url, download=True)
         file_path = ydl.prepare_filename(info_dict)
-        
-        # Sanitize the file path and return it
-        sanitized_file_path = sanitize_filename(file_path)
-        os.rename(file_path, sanitized_file_path)
-        
-        logging.info(f"File downloaded to: {sanitized_file_path}")
-        return sanitized_file_path
+
+    return file_path
 
 # Function to download media and send it asynchronously
 def download_and_send(message, url):
