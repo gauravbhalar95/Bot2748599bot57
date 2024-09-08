@@ -3,6 +3,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import os
+import re
 
 # Bot 2: Media Downloader
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -17,6 +18,14 @@ cookies_file = 'cookies.txt'
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
+
+def sanitize_filename(filename, max_length=100):
+    # Remove invalid characters for file names
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    # Limit the file name length to avoid "File name too long" errors
+    if len(filename) > max_length:
+        filename = filename[:max_length]
+    return filename
 
 # Download function using yt-dlp
 def download_media(url):
