@@ -10,7 +10,7 @@ API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
 # Directory to save downloaded files
-output_dir = 'downloads/Story'
+output_dir = 'downloads/'
 
 # Path to the cookies file
 cookies_file = 'cookies.txt'
