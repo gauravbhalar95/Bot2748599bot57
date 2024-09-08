@@ -5,7 +5,7 @@ import yt_dlp
 import os
 import re
 import threading
-import time
+import logging
 
 # Bot 2: Media Downloader
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -15,8 +15,8 @@ bot2 = telebot.TeleBot(API_TOKEN_2)
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
-# Cache dictionary to store recent downloads (optional)
-media_cache = {}
+# Logging setup
+logging.basicConfig(level=logging.INFO)
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
@@ -24,37 +24,36 @@ if not os.path.exists(output_dir):
 
 # Sanitize file names to prevent errors
 def sanitize_filename(filename, max_length=100):
+    # Remove invalid characters and spaces from the filename
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    filename = filename.strip()  # Remove any leading or trailing spaces
     if len(filename) > max_length:
         filename = filename[:max_length]
     return filename
 
 # Download function using yt-dlp
 def download_media(url):
-    # If media is already cached, return the cached path (optional)
-    if url in media_cache:
-        return media_cache[url]
-
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file,
-        # Limit download speed to avoid overwhelming the server (optional)
-        'throttled-rate': '1M',
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }]
     }
 
+    # Use yt-dlp to download the media
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(url, download=True)
         file_path = ydl.prepare_filename(info_dict)
-        file_path = sanitize_filename(file_path)
-
-    # Store downloaded file in cache (optional)
-    media_cache[url] = file_path
-    return file_path
+        
+        # Sanitize the file path and return it
+        sanitized_file_path = sanitize_filename(file_path)
+        os.rename(file_path, sanitized_file_path)
+        
+        logging.info(f"File downloaded to: {sanitized_file_path}")
+        return sanitized_file_path
 
 # Function to download media and send it asynchronously
 def download_and_send(message, url):
@@ -70,6 +69,7 @@ def download_and_send(message, url):
         os.remove(file_path)
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+        logging.error(f"Download failed: {e}")
 
 # Flask app setup
 app = Flask(__name__)
@@ -103,4 +103,4 @@ def webhook():
 
 if __name__ == "__main__":
     # Run the Flask app
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=80)
