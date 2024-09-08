@@ -19,7 +19,7 @@ cookies_file = 'cookies.txt'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-def sanitize_filename(filename, max_length=100):
+def sanitize_filename(filename, max_length=25):
     # Remove invalid characters for file names
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     # Limit the file name length to avoid "File name too long" errors
