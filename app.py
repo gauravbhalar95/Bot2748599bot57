@@ -9,8 +9,6 @@ from flask import Flask, request
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
-# RapidAPI credentials
-RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -18,25 +16,29 @@ logging.basicConfig(level=logging.INFO)
 # Flask app setup
 app = Flask(__name__)
 
-# Function to fetch Instagram media using RapidAPI
-def fetch_instagram_media(instagram_url):
-    try:
-        url = "https://instagram-scraper-2022.p.rapidapi.com/ig/media"
-        querystring = {"link": instagram_url}
-        headers = {
-            "X-RapidAPI-Key": RAPIDAPI_KEY,
-            "X-RapidAPI-Host": "instagram-scraper-2022.p.rapidapi.com"
-        }
 
-        response = requests.get(url, headers=headers, params=querystring)
-        response.raise_for_status()
+# Use environment variables for security
+INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')
+INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
 
-        media_data = response.json()
-        media_url = media_data.get('media_url')
-        return media_url
-    except Exception as e:
-        logging.error(f"Error fetching Instagram media: {e}")
-        return None
+# Download function using yt-dlp
+def download_media(url):
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'username': INSTAGRAM_USERNAME,
+        'password': INSTAGRAM_PASSWORD,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=True)
+        file_path = ydl.prepare_filename(info_dict)
+
+    return file_path
 
 # Function to download and send Instagram media
 def download_and_send_instagram_media(message, instagram_url):
