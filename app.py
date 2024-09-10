@@ -21,11 +21,11 @@ app = Flask(__name__)
 # Function to fetch Instagram media using RapidAPI
 def fetch_instagram_media(instagram_url):
     try:
-        url = "https://instagram-scraper-api2.p.rapidapi.com/ig/media"
+        url = "https://instagram-scraper-2022.p.rapidapi.com/ig/media"
         querystring = {"link": instagram_url}
         headers = {
             "X-RapidAPI-Key": RAPIDAPI_KEY,
-            "X-RapidAPI-Host": "instagram-scraper-api2.p.rapidapi.com"
+            "X-RapidAPI-Host": "instagram-scraper-2022.p.rapidapi.com"
         }
 
         response = requests.get(url, headers=headers, params=querystring)
