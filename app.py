@@ -1,27 +1,33 @@
-import requests
 import os
-import telebot
-import threading
+import re
 import logging
+import threading
+import telebot
+import yt_dlp
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
 
-# Bot setup
+# Bot 2: Media Downloader
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
+# Directory to save downloaded files
+output_dir = 'downloads/'
+cookies_file = 'cookies.txt'
+
+# Create the downloads directory if it does not exist
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
-# Flask app setup
-app = Flask(__name__)
+# Sanitize file names to prevent errors
+def sanitize_filename(filename, max_length=100):
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
 
-
-# Use environment variables for security
-INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')
-INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
-
-# Download function using yt-dlp
+# yt-dlp download options with cookies and faster timeout
 def download_media(url):
     ydl_opts = {
         'format': 'best',
@@ -30,8 +36,8 @@ def download_media(url):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'username': INSTAGRAM_USERNAME,
-        'password': INSTAGRAM_PASSWORD,
+        'cookiefile': cookies_file,  # Use cookies file for authentication
+        'socket_timeout': 15,  # Add timeout for faster failure in slow networks
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -40,42 +46,50 @@ def download_media(url):
 
     return file_path
 
-# Function to download and send Instagram media
-# Function to download media and send it asynchronously
+# Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
-        # Correct function call here
-        file_path = download_media(url)
-        
-        with open(file_path, 'rb') as media:
-            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                bot2.send_video(message.chat.id, media)
-            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                bot2.send_photo(message.chat.id, media)
-            else:
-                bot2.send_document(message.chat.id, media)
-        os.remove(file_path)
+        bot2.reply_to(message, "Downloading media, this may take some time...")
+
+        # Use a thread pool executor to manage threads
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future = executor.submit(download_media, url)
+            file_path = future.result()
+
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                    bot2.send_video(message.chat.id, media)
+                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
+
+            os.remove(file_path)
+    
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
+# Flask app setup
+app = Flask(__name__)
 
-# Bot command handlers
+# Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
-def send_welcome(message):
-    bot2.reply_to(message, "Welcome! Paste the Instagram link of the content you want to download.")
+def send_welcome_bot2(message):
+    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
 
+# Handle media links
 @bot2.message_handler(func=lambda message: True)
-def handle_message(message):
-    instagram_url = message.text
-    bot2.reply_to(message, "Downloading media, please wait...")
-    threading.Thread(target=download_and_send_instagram_media, args=(message, instagram_url)).start()
+def handle_links(message):
+    url = message.text
+    # Start a new thread for the download to avoid blocking the bot
+    threading.Thread(target=download_and_send, args=(message, url)).start()
 
-# Flask webhook routes
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
-def webhook_handler():
+def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    return "!", 200
 
 @app.route('/')
 def webhook():
@@ -84,4 +98,5 @@ def webhook():
     return "Webhook set", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=80)
