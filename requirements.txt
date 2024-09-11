@@ -3,5 +3,5 @@ pyTelegramBotAPI==4.9.0
 requests==2.32.3
 telebot==0.0.5
 python-telegram-bot==13.7
-yt-dlp==2023.9.7
+yt-dlp==2024.9.8.232909.dev0
 
