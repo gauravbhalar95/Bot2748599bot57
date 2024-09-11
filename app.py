@@ -7,6 +7,9 @@ import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
 
+# Initialize Flask app
+app = Flask(__name__)
+
 # Bot 2: Media Downloader
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -32,16 +35,9 @@ def download_media(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'cookiefile': cookies_file,  # Use cookies file for authentication
-        'socket_timeout': 15,  # Add timeout for faster failure in slow networks
-        'username': os.getenv('INSTAGRAM_USERNAME'),  # Add Instagram username if available
-        'password': os.getenv('INSTAGRAM_PASSWORD'),  # Add Instagram password if available
-        'noplaylist': True,  # Avoid downloading playlists
-        'verbose': True,  # Enable verbose logging for debugging
+        'cookiefile': cookies_file,
+        'noplaylist': True,
+        'verbose': True,
     }
 
     try:
@@ -78,9 +74,6 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Flask app setup
-app = Flask(__name__)
-
 # Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
 def send_welcome_bot2(message):
@@ -102,9 +95,10 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url='https://bot2-mb9e.onrender.com/' + API_TOKEN_2, timeout=60)
+    webhook_url = f'https://{request.host}/{API_TOKEN_2}'
+    bot2.set_webhook(url=webhook_url, timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
     # Run the Flask app
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 80)))
