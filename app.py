@@ -27,7 +27,7 @@ def sanitize_filename(filename, max_length=100):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# yt-dlp download options with cookies and faster timeout
+# yt-dlp download options with cookies and authentication for Instagram
 def download_media(url):
     ydl_opts = {
         'format': 'best',
@@ -38,11 +38,17 @@ def download_media(url):
         }],
         'cookiefile': cookies_file,  # Use cookies file for authentication
         'socket_timeout': 15,  # Add timeout for faster failure in slow networks
+        'username': os.getenv('INSTAGRAM_USERNAME'),  # Add Instagram username if available
+        'password': os.getenv('INSTAGRAM_PASSWORD'),  # Add Instagram password if available
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(url, download=True)
-        file_path = ydl.prepare_filename(info_dict)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+    except Exception as e:
+        logging.error(f"Download error: {e}")
+        raise
 
     return file_path
 
@@ -65,7 +71,7 @@ def download_and_send(message, url):
                     bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
-    
+
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
