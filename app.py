@@ -36,6 +36,9 @@ def download_media(url):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
+         'username': os.getenv('INSTAGRAM_USERNAME'),  # Add Instagram username if available
+        'password': os.getenv('INSTAGRAM_PASSWORD'),  # Add Instagram password if available
+       
         'cookiefile': cookies_file,  # Use cookies file for authentication
         'socket_timeout': 15,  # Add timeout for faster failure in slow networks
     }
