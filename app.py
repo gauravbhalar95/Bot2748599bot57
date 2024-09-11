@@ -27,7 +27,7 @@ def sanitize_filename(filename, max_length=100):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# yt-dlp download options with cookies and authentication for Instagram
+# yt-dlp download options with cookies and faster timeout
 def download_media(url):
     ydl_opts = {
         'format': 'best',
@@ -40,6 +40,8 @@ def download_media(url):
         'socket_timeout': 15,  # Add timeout for faster failure in slow networks
         'username': os.getenv('INSTAGRAM_USERNAME'),  # Add Instagram username if available
         'password': os.getenv('INSTAGRAM_PASSWORD'),  # Add Instagram password if available
+        'noplaylist': True,  # Avoid downloading playlists
+        'verbose': True,  # Enable verbose logging for debugging
     }
 
     try:
