@@ -2,7 +2,6 @@ import os
 import re
 import logging
 import threading
-import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
@@ -36,11 +35,9 @@ def download_media(url):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-         'username': os.getenv('INSTAGRAM_USERNAME'),  # Add Instagram username if available
-        'password': os.getenv('INSTAGRAM_PASSWORD'),  # Add Instagram password if available
-       
         'cookiefile': cookies_file,  # Use cookies file for authentication
         'socket_timeout': 15,  # Add timeout for faster failure in slow networks
+        'quiet': True,  # Suppress non-critical output
     }
 
     try:
@@ -48,8 +45,14 @@ def download_media(url):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
         return file_path
+    except yt_dlp.DownloadError as e:
+        logging.error(f"DownloadError: {e}")
+        raise
+    except KeyError as e:
+        logging.error(f"KeyError: {e}")
+        raise
     except Exception as e:
-        logging.error(f"Error in download_media: {e}")
+        logging.error(f"Failed to download. Error: {e}")
         raise
 
 # Function to download media and send it asynchronously with progress
@@ -100,7 +103,7 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
+    bot2.set_webhook(url='https://bot2-mb9e.onrender.com/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
