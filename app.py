@@ -7,9 +7,6 @@ import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
 
-# Initialize Flask app
-app = Flask(__name__)
-
 # Bot 2: Media Downloader
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -35,20 +32,22 @@ def download_media(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
-        'noplaylist': True,
-        'verbose': True,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'cookiefile': cookies_file,  # Use cookies file for authentication
+        'socket_timeout': 15,  # Add timeout for faster failure in slow networks
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+        return file_path
     except Exception as e:
-        logging.error(f"Download error: {e}")
+        logging.error(f"Error in download_media: {e}")
         raise
-
-    return file_path
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
@@ -74,6 +73,9 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
+# Flask app setup
+app = Flask(__name__)
+
 # Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
 def send_welcome_bot2(message):
@@ -95,10 +97,9 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    webhook_url = f'https://{request.host}/{API_TOKEN_2}'
-    bot2.set_webhook(url=webhook_url, timeout=60)
+    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
     # Run the Flask app
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 80)))
+    app.run(host='0.0.0.0', port=80)
