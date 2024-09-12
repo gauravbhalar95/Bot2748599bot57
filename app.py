@@ -15,7 +15,7 @@ bot2 = telebot.TeleBot(API_TOKEN_2)
 # Directory to save downloaded files
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
-cookies_file = 'cookies1.txt'
+
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
@@ -25,7 +25,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.INFO)
 
 # Sanitize file names to prevent errors
-def sanitize_filename(filename, max_length=100):
+def sanitize_filename(filename, max_length=200):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
@@ -35,13 +35,12 @@ def download_media(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
         'cookiefile': cookies_file,  # Path to your Instagram cookies
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
+            'preferedformat': 'mkv',
         }],
-        'socket_timeout': 15,
+        'socket_timeout': 20,
     }
 
     try:
