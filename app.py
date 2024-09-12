@@ -15,7 +15,7 @@ bot2 = telebot.TeleBot(API_TOKEN_2)
 # Directory to save downloaded files
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
-cookies_file1 = 'cookies1.txt'
+cookies_file = 'cookies1.txt'
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
@@ -36,7 +36,7 @@ def download_media(url):
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file,
-        'cookiefile1': cookies_file1,  # Path to your Instagram cookies
+        'cookiefile': cookies_file,  # Path to your Instagram cookies
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
