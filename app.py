@@ -40,7 +40,7 @@ def download_media(url):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mkv',
         }],
-        'socket_timeout': 20,
+        'socket_timeout': 15,
     }
 
     try:
