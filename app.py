@@ -29,17 +29,17 @@ def sanitize_filename(filename, max_length=100):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# yt-dlp download options with cookies and faster timeout
+# yt-dlp download options with cookies
 def download_media(url):
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,  # Path to your Instagram cookies
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'cookiefile': cookies_file,  # Use cookies file for authentication if needed
-        'socket_timeout': 15,  # Add timeout for faster failure in slow networks
+        'socket_timeout': 15,
     }
 
     try:
