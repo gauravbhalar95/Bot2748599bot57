@@ -49,6 +49,12 @@ def download_media(url):
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
             'socket_timeout': 15,
         }
+    elif 'youtube.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
     elif 'facebook.com' in url:
         ydl_opts = {
             'format': 'best',
