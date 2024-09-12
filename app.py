@@ -49,10 +49,14 @@ def download_media(url):
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
             'socket_timeout': 15,
         }
-    elif 'youtube.com' in url:
+    elif 'youtube.com' in url or 'youtu.be' in url:  # Support YouTube and shortened YouTube links
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',  # Ensures the video is saved in mp4 format
+            }],
             'socket_timeout': 15,
         }
     elif 'facebook.com' in url:
