@@ -38,7 +38,7 @@ def download_media(url):
         'cookiefile': cookies_file,  # Path to your Instagram cookies
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mkv',
+            'preferedformat': 'mp4',
         }],
         'socket_timeout': 15,
     }
