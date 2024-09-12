@@ -16,7 +16,6 @@ bot2 = telebot.TeleBot(API_TOKEN_2)
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
-
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
@@ -32,16 +31,32 @@ def sanitize_filename(filename, max_length=200):
 
 # yt-dlp download options with cookies
 def download_media(url):
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,  # Path to your Instagram cookies
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'socket_timeout': 15,
-    }
+    # Setting options based on platform
+    if 'instagram.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+    elif 'twitter.com' in url or 'x.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
+    elif 'facebook.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
+    else:
+        raise Exception("Unsupported URL!")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
