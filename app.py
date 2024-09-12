@@ -58,6 +58,7 @@ def download_media(url):
                 'preferedformat': 'mp4',  # Ensures the video is saved in mp4 format
             }],
             'socket_timeout': 15,
+            'cookiefile': cookies_file,
         }
     elif 'facebook.com' in url:
         ydl_opts = {
