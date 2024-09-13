@@ -47,6 +47,11 @@ def download_media(url):
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
             'socket_timeout': 15,
         }
     elif 'youtube.com' in url or 'youtu.be' in url:  # Support YouTube and shortened YouTube links
