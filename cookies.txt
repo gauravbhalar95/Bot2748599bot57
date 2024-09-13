@@ -55,3 +55,22 @@ x.com	FALSE	/	FALSE	0	lang	en
 .youtube.com	TRUE	/	FALSE	1757700580	SIDCC	AKEyXzWDg_v78ZlJKBPR8qJJDOuvtvIlS4mq4eCHUdxpDcrSpayD3XmspMm_-NQYfsR0j7s_ZZg
 .youtube.com	TRUE	/	TRUE	1757700580	__Secure-1PSIDCC	AKEyXzW0w88Q9pbnXif2dZrts0kSxrVYsj9V9XLQiQm0gK5YGXK488m6tQT7UnXoU8JgmghGqNc
 .youtube.com	TRUE	/	TRUE	1757700580	__Secure-3PSIDCC	AKEyXzXflp9PlDiCAeM7E58QgHhLjIgRCbyzdjci8iwk24aj9GD7A_WLlUlKvlXMRGToVlpnzBU
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.instagram.com	TRUE	/	TRUE	1755830066	mid	Zph_MgABAAHCK6_--K576X-SVj0t
+.instagram.com	TRUE	/	TRUE	1752806118	ig_did	7AE3C3F7-B46A-44B6-8578-78C8B16CB022
+.instagram.com	TRUE	/	TRUE	1755830067	datr	Mn-YZkO8qDUMp_TK05H4JSJI
+.instagram.com	TRUE	/	TRUE	1752806103	ig_nrcb	1
+.instagram.com	TRUE	/	TRUE	1755853159	ps_n	1
+.instagram.com	TRUE	/	TRUE	1755853159	ps_l	1
+.instagram.com	TRUE	/	TRUE	1753470613	fbm_124024574287414	base_domain=.instagram.com
+.instagram.com	TRUE	/	TRUE	1726800571	dpr	2.8125
+.instagram.com	TRUE	/	TRUE	1726589716	shbid	"16095\05467842185883\0541757520916:01f7d1f220e299d7598335cb91f6eb06ada79531d00cdc963b726008cbcb0506d4ef8e0c"
+.instagram.com	TRUE	/	TRUE	1726589716	shbts	"1725984916\05467842185883\0541757520916:01f73551f237b44ddebd49835b6a19034af4c4d31707330feace6f0c6a3b40a6d555135b"
+.instagram.com	TRUE	/	TRUE	1726800570	wd	384x729
+.instagram.com	TRUE	/	TRUE	1757645372	csrftoken	CmVLwxisltVg1GarrLsoBrnu7HIh6dar
+.instagram.com	TRUE	/	TRUE	1733971772	ds_user_id	67842185883
+.instagram.com	TRUE	/	TRUE	1757731752	sessionid	67842185883%3AztP3APAQiuxY7X%3A25%3AAYe4fecXdXMUXKvFTFDQ5cK2pdqNNMhm9Q6RrL8wdQ
+.instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541757731772:01f74b10876220b3d6f8658d6bad797b3b25383c319c6f81d03aceff33e090a18d7cb43b"
