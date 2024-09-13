@@ -78,7 +78,7 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it asynchronously with progress
+# Function to download media and send it # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
