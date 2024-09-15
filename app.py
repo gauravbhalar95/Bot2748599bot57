@@ -45,7 +45,7 @@ def download_media(url):
         }
 
         # Check for Instagram story URL pattern and update format
-        if '/stories/' in url:
+        if '/story/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'  # Highest quality for stories
             ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'  # Custom filename for stories
 
