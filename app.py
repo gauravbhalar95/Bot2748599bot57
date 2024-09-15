@@ -29,7 +29,7 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# yt-dlp download options with cookies
+# yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
     # Setting options based on platform
     if 'instagram.com' in url:
@@ -43,6 +43,17 @@ def download_media(url):
             }],
             'socket_timeout': 15,
         }
+
+        # Check for Instagram story URL pattern and update format
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'  # Highest quality for stories
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'  # Custom filename for stories
+
+        # Check for Instagram image link and adjust the format
+        if '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'  # For images or TV posts
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+
     elif 'twitter.com' in url or 'x.com' in url:
         ydl_opts = {
             'format': 'best',
@@ -83,7 +94,7 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it # Function to download media and send it asynchronously with progress
+# Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
