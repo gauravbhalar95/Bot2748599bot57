@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+from bs4 import BeautifulSoup
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -28,6 +29,19 @@ def sanitize_filename(filename, max_length=200):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
+
+def download_image(url):
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        # Extract filename from URL or use a generic name
+        filename = sanitize_filename(url.split('/')[-1])
+        file_path = os.path.join(output_dir, filename)
+        with open(file_path, 'wb') as file:
+            for chunk in response.iter_content(1024):
+                file.write(chunk)
+        return file_path
+    else:
+        raise Exception(f"Failed to download image from {url}")
 
 # yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
