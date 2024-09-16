@@ -54,6 +54,18 @@ def download_media(url):
             ydl_opts['format'] = 'best'  # For images or TV posts
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
+    elif 'threads.net' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+
     elif 'twitter.com' in url or 'x.com' in url:
         ydl_opts = {
             'format': 'best',
