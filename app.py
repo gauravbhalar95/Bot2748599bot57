@@ -32,7 +32,7 @@ def sanitize_filename(filename, max_length=200):
 
 def download_image(url):
     response = requests.get(url, stream=True)
-      if response.status_code == 200:
+    if response.status_code == 200:
         # Extract filename from URL or use a generic name
         filename = sanitize_filename(url.split('/')[-1])
         file_path = os.path.join(output_dir, filename)
