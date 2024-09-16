@@ -54,7 +54,7 @@ def download_media(url):
             ydl_opts['format'] = 'best'  # For images or TV posts
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
-    elif 'threads.net' in url:
+    elif 'threads.com' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
