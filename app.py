@@ -1,10 +1,10 @@
 import os
 import logging
 import threading
-from bs4 import BeautifulSoup
 from flask import Flask, request
 import telebot
 import yt_dlp
+import requests
 from concurrent.futures import ThreadPoolExecutor
 
 # Load the API token from environment variables
@@ -33,7 +33,6 @@ def sanitize_filename(filename, max_length=200):
 def download_image(url):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
-        # Extract filename from URL or use a generic name
         filename = sanitize_filename(url.split('/')[-1])
         file_path = os.path.join(output_dir, filename)
         with open(file_path, 'wb') as file:
@@ -45,8 +44,7 @@ def download_image(url):
 
 # yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
-    # Setting options based on platform
-      if 'instagram.com' in url:
+    if 'instagram.com' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
@@ -57,22 +55,14 @@ def download_media(url):
             }],
             'socket_timeout': 15,
         }
-
-        # Check for Instagram story URL pattern and update format
-      if '/stories/' in url:
-    # Set the download format to the highest quality for video and audio
-    ydl_opts['format'] = 'bestvideo+bestaudio/best'
-    # Define the output filename pattern for stories
-    # %(uploader)s will be replaced by the uploader's name and _story will be appended
-    ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-
-
-        # Check for Instagram image link and adjust the format
-      if '/p/' in url or '/tv/' in url:
-            ydl_opts['format'] = 'best'  # For images or TV posts
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
-    elif 'threads.com' in url:
+    elif 'threads.com' in url or 'twitter.com' in url or 'x.com' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
@@ -84,34 +74,25 @@ def download_media(url):
             'socket_timeout': 15,
         }
 
-    elif 'twitter.com' in url or 'x.com' in url:
+    elif 'youtube.com' in url or 'youtu.be' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
             'socket_timeout': 15,
-        }
-    elif 'youtube.com' in url or 'youtu.be' in url:  # Support YouTube and shortened YouTube links
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',  # Ensures the video is saved in mp4 format
-            }],
-            'socket_timeout': 15,
             'cookiefile': cookies_file,
         }
+
     elif 'facebook.com' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
             'socket_timeout': 15,
         }
+
     else:
         raise Exception("Unsupported URL!")
 
@@ -172,7 +153,7 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url='https://bot2-mb9e.onrender.com/' + API_TOKEN_2, timeout=60)
+    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
