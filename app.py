@@ -32,7 +32,7 @@ def sanitize_filename(filename, max_length=200):
 
 def download_image(url):
     response = requests.get(url, stream=True)
-    if response.status_code == 200:
+      if response.status_code == 200:
         # Extract filename from URL or use a generic name
         filename = sanitize_filename(url.split('/')[-1])
         file_path = os.path.join(output_dir, filename)
@@ -46,7 +46,7 @@ def download_image(url):
 # yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
     # Setting options based on platform
-    if 'instagram.com' in url:
+      if 'instagram.com' in url:
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
@@ -59,7 +59,7 @@ def download_media(url):
         }
 
         # Check for Instagram story URL pattern and update format
-        if '/stories/' in url:
+      if '/stories/' in url:
     # Set the download format to the highest quality for video and audio
     ydl_opts['format'] = 'bestvideo+bestaudio/best'
     # Define the output filename pattern for stories
@@ -68,7 +68,7 @@ def download_media(url):
 
 
         # Check for Instagram image link and adjust the format
-        if '/p/' in url or '/tv/' in url:
+      if '/p/' in url or '/tv/' in url:
             ydl_opts['format'] = 'best'  # For images or TV posts
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
