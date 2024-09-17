@@ -12,6 +12,10 @@
 # http://curl.haxx.se/rfc/cookie_spec.html
 # This is a generated file!  Do not edit.
 
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
 .instagram.com	TRUE	/	TRUE	1755830066	mid	Zph_MgABAAHCK6_--K576X-SVj0t
 .instagram.com	TRUE	/	TRUE	1752806118	ig_did	7AE3C3F7-B46A-44B6-8578-78C8B16CB022
 .instagram.com	TRUE	/	TRUE	1755830067	datr	Mn-YZkO8qDUMp_TK05H4JSJI
@@ -19,14 +23,14 @@
 .instagram.com	TRUE	/	TRUE	1755853159	ps_n	1
 .instagram.com	TRUE	/	TRUE	1755853159	ps_l	1
 .instagram.com	TRUE	/	TRUE	1753470613	fbm_124024574287414	base_domain=.instagram.com
-.instagram.com	TRUE	/	TRUE	1727105351	dpr	2.8125
+.instagram.com	TRUE	/	TRUE	1727192337	dpr	2.8125
 .instagram.com	TRUE	/	TRUE	1727022199	shbid	"16095\05467842185883\0541757953398:01f7a0ab4f2e08019e91c3e0191342aa5fdafe2861752b79895781d6299e5d95c109f35c"
 .instagram.com	TRUE	/	TRUE	1727022199	shbts	"1726417398\05467842185883\0541757953398:01f7a9241a1bcad6d8888bfe8b4b03a1787d3fef91e59d4c7a34ab7bf4c0d532b5082d8d"
-.instagram.com	TRUE	/	TRUE	1727105351	wd	384x729
-.instagram.com	TRUE	/	TRUE	1757950156	csrftoken	IJKFeJlyIUi3W3363VegcIWkcgdFfPdM
-.instagram.com	TRUE	/	TRUE	1734276556	ds_user_id	67842185883
-.instagram.com	TRUE	/	TRUE	1758036548	sessionid	67842185883%3ABXXKzlzI17qN9C%3A28%3AAYeWUS1I08Tj59HJkvH1GJVhIHyrdrOqcgbaZolzoQ
-.instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541758036555:01f7e3fc7f9e0111e63b2f0855c46037b4a788e86886cc15a7c10e2b82a2eba67cc2b31d"
+.instagram.com	TRUE	/	TRUE	1727192337	wd	384x729
+.instagram.com	TRUE	/	TRUE	1758037138	csrftoken	KROYK9YpB5seTspFWifvLtADymTrhAz8
+.instagram.com	TRUE	/	TRUE	1734363538	ds_user_id	67842185883
+.instagram.com	TRUE	/	TRUE	1758123496	sessionid	67842185883%3AIc9rrlnfr9vsGp%3A7%3AAYewO3swu_BuzkVEBYsXtMmFWXjd_NajGldF5yKynw
+.instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541758123538:01f75c227645d5a583632cf57377c95292a8739c3b0aeef2164cc4e1f00f0c4d19581a14"
 .youtube.com	TRUE	/	TRUE	1760724571	PREF	tz=Asia.Calcutta
 .youtube.com	TRUE	/	TRUE	1757700569	__Secure-1PSIDTS	sidts-CjIBUFGoh733896W6mefBwP752ZzKGzT3zY7-nsDuOru3OC4N7MaiX-lvQM_gYkj7L6f0BAA
 .youtube.com	TRUE	/	TRUE	1757700569	__Secure-3PSIDTS	sidts-CjIBUFGoh733896W6mefBwP752ZzKGzT3zY7-nsDuOru3OC4N7MaiX-lvQM_gYkj7L6f0BAA
