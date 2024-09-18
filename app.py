@@ -154,7 +154,7 @@ def getMessage():
 @app.route('/')
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=f'https://your-app-url.com/{API_TOKEN}', timeout=60)
+    bot.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
