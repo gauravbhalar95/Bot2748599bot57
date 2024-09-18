@@ -40,27 +40,6 @@ def check_user_status(user_id):
         logging.error(f"Error checking user status: {e}")
         return 'error'
 
-# Task to run after admin verification
-def run_task(message):
-    try:
-        url = message.text
-        file_path = download_media(url)
-        bot.reply_to(message, "Task completed successfully.")
-        
-        # Send the media file
-        with open(file_path, 'rb') as media:
-            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                bot.send_video(message.chat.id, media)
-            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                bot.send_photo(message.chat.id, media)
-            else:
-                bot.send_document(message.chat.id, media)
-        
-        # Remove the file after sending
-        os.remove(file_path)
-    except Exception as e:
-        bot.reply_to(message, f"Failed to run task. Error: {str(e)}")
-        logging.error(f"Task execution failed: {e}")
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
@@ -108,6 +87,30 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
+
+
+# Task to run after admin verification
+def run_task(message):
+    try:
+        url = message.text
+        file_path = download_media(url)
+        bot.reply_to(message, "Task completed successfully.")
+        
+        # Send the media file
+        with open(file_path, 'rb') as media:
+            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                bot.send_video(message.chat.id, media)
+            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                bot.send_photo(message.chat.id, media)
+            else:
+                bot.send_document(message.chat.id, media)
+        
+        # Remove the file after sending
+        os.remove(file_path)
+    except Exception as e:
+        bot.reply_to(message, f"Failed to run task. Error: {str(e)}")
+        logging.error(f"Task execution failed: {e}")
+
 
 # Flask app setup
 app = Flask(__name__)
