@@ -1,16 +1,18 @@
 import os
 import logging
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
 import requests
+from concurrent.futures import ThreadPoolExecutor
 
-# Load the API token and channel ID from environment variables
-API_TOKEN = os.getenv('API_TOKEN')
+# Load API tokens and channel IDs from environment variables
+API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
 # Initialize the bot
-bot = telebot.TeleBot(API_TOKEN)
+bot2 = telebot.TeleBot(API_TOKEN_2)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
@@ -26,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 # Function to check the user status in the channel
 def check_user_status(user_id):
     try:
-        member = bot.get_chat_member(CHANNEL_ID, user_id)
+        member = bot2.get_chat_member(CHANNEL_ID, user_id)
         logging.info(f"User status: {member.status}")
         if member.status in ['administrator', 'creator']:
             return 'admin'
@@ -39,7 +41,6 @@ def check_user_status(user_id):
     except Exception as e:
         logging.error(f"Error checking user status: {e}")
         return 'error'
-
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
@@ -62,7 +63,6 @@ def download_media(url):
                 'preferedformat': 'mp4',
             }],
             'socket_timeout': 15,
-            'quiet': False,  # Enable verbose logging
         }
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
@@ -118,62 +118,77 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Function to download media and send it asynchronously with progress
+def download_and_send(message, url):
+    try:
+        bot2.reply_to(message, "Downloading media, this may take some time...")
 
+        # Use a thread pool executor to manage threads
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future = executor.submit(download_media, url)
+            file_path = future.result()
 
-# Task to run after admin verification
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                    bot2.send_video(message.chat.id, media)
+                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
+
+            os.remove(file_path)
+
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+        logging.error(f"Download failed: {e}")
+
+# Function to run tasks after admin verification
 def run_task(message):
     try:
         url = message.text
-        file_path = download_media(url)
-        bot.reply_to(message, "Task completed successfully.")
-        
-        # Send the media file
-        with open(file_path, 'rb') as media:
-            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                bot.send_video(message.chat.id, media)
-            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                bot.send_photo(message.chat.id, media)
-            else:
-                bot.send_document(message.chat.id, media)
-        
-        # Remove the file after sending
-        os.remove(file_path)
-    except Exception as e:
-        bot.reply_to(message, f"Failed to run task. Error: {str(e)}")
-        logging.error(f"Task execution failed: {e}")
+        user_id = message.from_user.id
+        status = check_user_status(user_id)
 
+        if status == 'admin':
+            bot2.reply_to(message, "Admin verification successful. Starting download...")
+            download_and_send(message, url)
+        elif status == 'member':
+            bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
+        elif status == 'banned':
+            bot2.reply_to(message, "You are banned from the channel.")
+        elif status == 'not_member':
+            bot2.reply_to(message, f"Please join the channel first: {CHANNEL_ID}")
+        else:
+            bot2.reply_to(message, "There was an error checking your status. Please try again later.")
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
+        logging.error(f"Task execution failed: {e}")
 
 # Flask app setup
 app = Flask(__name__)
 
-# Bot command to start and welcome the user
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    status = check_user_status(user_id)
+# Bot 2 commands and handlers
+@bot2.message_handler(commands=['start'])
+def send_welcome_bot2(message):
+    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
 
-    if status == 'admin':
-        bot.reply_to(message, "Welcome Admin! Your tasks will run automatically.")
-        run_task(message)
-    elif status == 'member':
-        bot.reply_to(message, "Hello Member! Join our tasks or ask the admin to assign them.")
-    elif status == 'banned':
-        bot.reply_to(message, "You are banned from the channel.")
-    elif status == 'not_member':
-        bot.reply_to(message, f"Please join the channel first: {CHANNEL_ID}")
-    else:
-        bot.reply_to(message, "There was an error checking your status. Please try again later.")
+# Handle media links
+@bot2.message_handler(func=lambda message: True)
+def handle_links(message):
+    url = message.text
+    # Start a new thread for the task to avoid blocking the bot
+    threading.Thread(target=run_task, args=(message,)).start()
 
 # Flask routes for webhook handling
-@app.route('/' + API_TOKEN, methods=['POST'])
-def getMessage():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+@app.route('/' + API_TOKEN_2, methods=['POST'])
+def getMessage_bot2():
+    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
 @app.route('/')
 def webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN}', timeout=60)
+    bot2.remove_webhook()
+    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
