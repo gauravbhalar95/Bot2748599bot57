@@ -31,7 +31,7 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Check if the user has joined the channel
+# Check if the user has joined the channel automatically
 def is_user_in_channel(user_id):
     try:
         # Check if the user is in the channel
@@ -57,28 +57,54 @@ def download_image(url):
 
 # yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'socket_timeout': 15,
-    }
-
     if 'instagram.com' in url:
-        ydl_opts.update({
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(uploader)s.%(ext)s',
-        })
-
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        ydl_opts.update({
+        ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        })
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+
+    elif 'threads.com' in url or 'twitter.com' in url or 'x.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+            'cookiefile': cookies_file,
+        }
+
+    elif 'facebook.com' in url:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
 
     else:
         raise Exception("Unsupported URL!")
@@ -131,16 +157,16 @@ def handle_links(message):
     user_id = message.from_user.id
 
     # Check if the user has joined the channel
-    if not is_user_in_channel(user_id):
+    if is_user_in_channel(user_id):
+        url = message.text
+        # Start a new thread for the download to avoid blocking the bot
+        threading.Thread(target=download_and_send, args=(message, url)).start()
+    else:
+        # Automatically prompt to join the channel and retry after a short delay
         bot2.reply_to(message, f"Please join our channel first: {CHANNEL_ID}")
         join_button = telebot.types.InlineKeyboardMarkup()
         join_button.add(telebot.types.InlineKeyboardButton('Join Channel', url=f"https://t.me/{CHANNEL_ID[1:]}"))
-        bot2.send_message(message.chat.id, "After joining, you can try again.", reply_markup=join_button)
-        return
-
-    url = message.text
-    # Start a new thread for the download to avoid blocking the bot
-    threading.Thread(target=download_and_send, args=(message, url)).start()
+        bot2.send_message(message.chat.id, "After joining, try again.", reply_markup=join_button)
 
 # Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
