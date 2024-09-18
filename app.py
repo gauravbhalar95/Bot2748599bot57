@@ -1,15 +1,11 @@
 import os
 import logging
-import threading
 from flask import Flask, request
 import telebot
-import yt_dlp
-from concurrent.futures import ThreadPoolExecutor
-import requests
 
 # Load the API token and channel ID from environment variables
 API_TOKEN = os.getenv('API_TOKEN')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID, like '@YourChannel'
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN)
@@ -29,6 +25,7 @@ logging.basicConfig(level=logging.INFO)
 def check_user_status(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_ID, user_id)
+        logging.info(f"User status: {member.status}")
         if member.status in ['administrator', 'creator']:
             return 'admin'
         elif member.status == 'member':
@@ -44,9 +41,7 @@ def check_user_status(user_id):
 # Task to run after admin verification
 def run_task(message):
     bot.reply_to(message, "Task is running automatically, since you're an admin.")
-    # Add the task logic you want to run here
-    # Example task: Send a notification to the channel or perform any action.
-    bot.send_message(message.chat.id, "Performing the admin task now...")
+    # Add task logic here
 
 # Sanitize file names to prevent errors
 def sanitize_filename(filename, max_length=200):
@@ -54,7 +49,6 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to download images
 def download_image(url):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
@@ -67,7 +61,7 @@ def download_image(url):
     else:
         raise Exception(f"Failed to download image from {url}")
 
-# Function to download media using yt-dlp
+# yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
     if 'instagram.com' in url:
         ydl_opts = {
@@ -138,7 +132,7 @@ app = Flask(__name__)
 def send_welcome(message):
     user_id = message.from_user.id
     status = check_user_status(user_id)
-
+    
     if status == 'admin':
         bot.reply_to(message, "Welcome Admin! Your tasks will run automatically.")
         run_task(message)
@@ -151,7 +145,7 @@ def send_welcome(message):
     else:
         bot.reply_to(message, "There was an error checking your status. Please try again later.")
 
-# Flask route for webhook handling
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN, methods=['POST'])
 def getMessage():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
@@ -160,9 +154,9 @@ def getMessage():
 @app.route('/')
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN}', timeout=60)
+    bot.set_webhook(url=f'https://your-app-url.com/{API_TOKEN}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
-    # Run the Flask app on port 80
+    # Run the Flask app
     app.run(host='0.0.0.0', port=80)
