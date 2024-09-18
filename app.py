@@ -7,7 +7,7 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
-# Load the API token from environment variables
+# Load the API token and channel ID from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Channel username with @, like '@YourChannel'
 
@@ -25,37 +25,29 @@ if not os.path.exists(output_dir):
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
-# Sanitize file names to prevent errors
+# Function to sanitize file names
 def sanitize_filename(filename, max_length=200):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Check if the user has joined the channel automatically
-def is_user_in_channel(user_id):
+# Function to check the user status in the channel
+def check_user_status(user_id):
     try:
-        # Check if the user is in the channel
         member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        # If the user is not banned or kicked, they have joined the channel
-        if member.status in ['member', 'administrator', 'creator']:
-            return True
+        if member.status in ['administrator', 'creator']:
+            return 'admin'
+        elif member.status == 'member':
+            return 'member'
+        elif member.status == 'kicked':
+            return 'banned'
+        else:
+            return 'not_member'
     except Exception as e:
-        logging.error(f"Error checking channel membership: {e}")
-    return False
+        logging.error(f"Error checking user status: {e}")
+        return 'error'
 
-def download_image(url):
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        filename = sanitize_filename(url.split('/')[-1])
-        file_path = os.path.join(output_dir, filename)
-        with open(file_path, 'wb') as file:
-            for chunk in response.iter_content(1024):
-                file.write(chunk)
-        return file_path
-    else:
-        raise Exception(f"Failed to download image from {url}")
-
-# yt-dlp download options with cookies, including Instagram stories and images
+# Function to download media using yt-dlp
 def download_media(url):
     if 'instagram.com' in url:
         ydl_opts = {
@@ -118,7 +110,7 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it asynchronously with progress
+# Function to download and send media asynchronously
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
@@ -145,28 +137,39 @@ def download_and_send(message, url):
 # Flask app setup
 app = Flask(__name__)
 
-# Bot 2 commands and handlers
+# Bot command to start and welcome the user
 @bot2.message_handler(commands=['start'])
-def send_welcome_bot2(message):
+def send_welcome(message):
     bot2.reply_to(message, f"Welcome! Please join our channel: {CHANNEL_ID} before using the bot.")
     bot2.reply_to(message, "After joining, you can paste the link of the content you want to download.")
 
-# Handle media links
+# Handle media links and verify user status
 @bot2.message_handler(func=lambda message: True)
-def handle_links(message):
+def handle_message(message):
     user_id = message.from_user.id
+    status = check_user_status(user_id)
 
-    # Check if the user has joined the channel
-    if is_user_in_channel(user_id):
+    if status == 'admin':
+        bot2.reply_to(message, "Hello admin! You have full access to the bot.")
         url = message.text
-        # Start a new thread for the download to avoid blocking the bot
         threading.Thread(target=download_and_send, args=(message, url)).start()
-    else:
-        # Automatically prompt to join the channel and retry after a short delay
+
+    elif status == 'member':
+        bot2.reply_to(message, "Hello member! You can now use the bot.")
+        url = message.text
+        threading.Thread(target=download_and_send, args=(message, url)).start()
+
+    elif status == 'banned':
+        bot2.reply_to(message, "You are banned from the channel. You cannot use this bot.")
+
+    elif status == 'not_member':
         bot2.reply_to(message, f"Please join our channel first: {CHANNEL_ID}")
         join_button = telebot.types.InlineKeyboardMarkup()
         join_button.add(telebot.types.InlineKeyboardButton('Join Channel', url=f"https://t.me/{CHANNEL_ID[1:]}"))
         bot2.send_message(message.chat.id, "After joining, try again.", reply_markup=join_button)
+
+    else:
+        bot2.reply_to(message, "There was an error checking your status. Please try again later.")
 
 # Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
