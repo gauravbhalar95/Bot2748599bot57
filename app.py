@@ -5,12 +5,11 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import requests
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from concurrent.futures import ThreadPoolExecutor
 
-# Load the API token and channel ID from environment variables
+# Load the API token from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Load your Telegram channel ID from environment
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Channel username with @, like '@YourChannel'
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -32,7 +31,18 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Download image function
+# Check if the user has joined the channel
+def is_user_in_channel(user_id):
+    try:
+        # Check if the user is in the channel
+        member = bot2.get_chat_member(CHANNEL_ID, user_id)
+        # If the user is not banned or kicked, they have joined the channel
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+    except Exception as e:
+        logging.error(f"Error checking channel membership: {e}")
+    return False
+
 def download_image(url):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
@@ -47,9 +57,40 @@ def download_image(url):
 
 # yt-dlp download options with cookies, including Instagram stories and images
 def download_media(url):
-    # Check platform-specific options for yt-dlp (YouTube, Instagram, Twitter, etc.)
-    # Same as before...
-    pass
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'socket_timeout': 15,
+    }
+
+    if 'instagram.com' in url:
+        ydl_opts.update({
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(uploader)s.%(ext)s',
+        })
+
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        ydl_opts.update({
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        })
+
+    else:
+        raise Exception("Unsupported URL!")
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+        return file_path
+    except Exception as e:
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
@@ -75,41 +116,31 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to check if user is in the required channel
-def is_user_in_channel(user_id):
-    try:
-        status = bot2.get_chat_member(CHANNEL_ID, user_id).status
-        return status in ['member', 'administrator', 'creator']
-    except Exception as e:
-        logging.error(f"Error checking user membership: {e}")
-        return False
-
-# Handle the verification process
-def verify_membership(message):
-    if is_user_in_channel(message.from_user.id):
-        bot2.reply_to(message, "Thank you for being a member! You can now use the bot.")
-        return True
-    else:
-        keyboard = InlineKeyboardMarkup()
-        join_button = InlineKeyboardButton('Join Channel', url=f'https://t.me/{CHANNEL_ID[1:]}')
-        keyboard.add(join_button)
-        bot2.reply_to(message, "Please join our channel to use this bot.", reply_markup=keyboard)
-        return False
-
 # Flask app setup
 app = Flask(__name__)
 
 # Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
 def send_welcome_bot2(message):
-    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download after joining our channel.")
-    
+    bot2.reply_to(message, f"Welcome! Please join our channel: {CHANNEL_ID} before using the bot.")
+    bot2.reply_to(message, "After joining, you can paste the link of the content you want to download.")
+
+# Handle media links
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    if verify_membership(message):
-        url = message.text
-        # Start a new thread for the download to avoid blocking the bot
-        threading.Thread(target=download_and_send, args=(message, url)).start()
+    user_id = message.from_user.id
+
+    # Check if the user has joined the channel
+    if not is_user_in_channel(user_id):
+        bot2.reply_to(message, f"Please join our channel first: {CHANNEL_ID}")
+        join_button = telebot.types.InlineKeyboardMarkup()
+        join_button.add(telebot.types.InlineKeyboardButton('Join Channel', url=f"https://t.me/{CHANNEL_ID[1:]}"))
+        bot2.send_message(message.chat.id, "After joining, you can try again.", reply_markup=join_button)
+        return
+
+    url = message.text
+    # Start a new thread for the download to avoid blocking the bot
+    threading.Thread(target=download_and_send, args=(message, url)).start()
 
 # Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
