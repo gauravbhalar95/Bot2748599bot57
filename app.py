@@ -11,6 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
+# Instagram credentials from environment variables
+INSTAGRAM_APP_ID = os.getenv('INSTAGRAM_APP_ID')
+INSTAGRAM_APP_SECRET = os.getenv('INSTAGRAM_APP_SECRET')
+INSTAGRAM_ACCESS_TOKEN = os.getenv('INSTAGRAM_ACCESS_TOKEN')
+
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
@@ -48,28 +53,49 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to download media
+# Function to extract Instagram media ID from URL
+def extract_instagram_media_id(url):
+    import re
+    match = re.search(r'instagram\.com/[^/]+/([^/?#&]+)', url)
+    if match:
+        return match.group(1)
+    else:
+        raise Exception("Invalid Instagram URL")
+
+# Function to fetch media URL from Instagram Graph API
+def get_instagram_media_url(media_id):
+    url = f"https://graph.instagram.com/{media_id}?fields=id,media_type,media_url,thumbnail_url&access_token={INSTAGRAM_ACCESS_TOKEN}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        media_url = data['media_url']
+        return media_url
+    else:
+        logging.error(f"Instagram API error: {response.status_code} {response.text}")
+        raise Exception("Failed to get media from Instagram")
+
+# Function to download Instagram media
+def download_instagram_media(url):
+    logging.info(f"Downloading Instagram media from URL: {url}")
+    media_id = extract_instagram_media_id(url)
+    media_url = get_instagram_media_url(media_id)
+    
+    # Download the actual media
+    response = requests.get(media_url, stream=True)
+    file_name = f"{output_dir}{sanitize_filename(media_id)}.jpg"  # Adjust extension as needed
+    with open(file_name, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                f.write(chunk)
+    return file_name
+
+# Function to download media based on platform
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
     if 'instagram.com' in url:
         logging.info("Processing Instagram URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 15,
-        }
-        if '/stories/' in url:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
-            ydl_opts['format'] = 'best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+        return download_instagram_media(url)
 
     elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
         logging.info("Processing Twitter/Threads/X URL")
