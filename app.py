@@ -3,21 +3,20 @@ import logging
 import threading
 from flask import Flask, request
 import telebot
+import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
-INSTAGRAM_APP_ID = os.getenv('INSTAGRAM_APP_ID')
-INSTAGRAM_APP_SECRET = os.getenv('INSTAGRAM_APP_SECRET')
-INSTAGRAM_ACCESS_TOKEN = os.getenv('INSTAGRAM_ACCESS_TOKEN')
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
+cookies_file = 'cookies.txt'
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
@@ -49,66 +48,84 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to extract media ID from Instagram URL
-def extract_instagram_media_id(url):
-    import re
-    match = re.search(r'instagram\.com/[^/]+/([^/?#&]+)', url)
-    if match:
-        return match.group(1)
-    else:
-        raise Exception("Invalid Instagram URL")
+# Function to download media
+def download_media(url):
+    logging.info(f"Attempting to download media from URL: {url}")
 
-# Function to fetch media URL from Instagram Graph API
-def get_instagram_media_url(media_id):
-    url = f"https://graph.instagram.com/{media_id}?fields=id,media_type,media_url,thumbnail_url&access_token={INSTAGRAM_ACCESS_TOKEN}"
-    
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        data = response.json()
-        if 'media_url' in data:
-            media_url = data['media_url']
-            logging.info(f"Instagram media URL fetched: {media_url}")
-            return media_url
-        else:
-            logging.error(f"No media URL found in response: {data}")
-            raise Exception("No media URL found in Instagram response.")
-    else:
-        logging.error(f"Instagram API error: {response.status_code} {response.text}")
-        raise Exception(f"Failed to get media from Instagram: {response.status_code} {response.text}")
+    if 'instagram.com' in url:
+        logging.info("Processing Instagram URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
-# Function to download media from Instagram
-def download_instagram_media(url):
+    elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
+        logging.info("Processing Twitter/Threads/X URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.info("Processing YouTube URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+            'cookiefile': cookies_file,
+        }
+
+    elif 'facebook.com' in url:
+        logging.info("Processing Facebook URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
+
+    else:
+        logging.error(f"Unsupported URL: {url}")
+        raise Exception("Unsupported URL!")
+
     try:
-        media_id = extract_instagram_media_id(url)
-        media_url = get_instagram_media_url(media_id)
-        
-        # Download the media file
-        response = requests.get(media_url, stream=True)
-        file_extension = media_url.split('.')[-1]
-        file_name = sanitize_filename(f"{media_id}.{file_extension}")
-
-        file_path = os.path.join(output_dir, file_name)
-        
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        logging.info(f"Downloaded media file: {file_path}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
         return file_path
-    
     except Exception as e:
-        logging.error(f"Error downloading Instagram media: {e}")
-        raise Exception("Failed to download Instagram media.")
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
 
-# Function to download and send media asynchronously
+# Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         # Use a thread pool executor to manage threads
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_instagram_media, url)
+            future = executor.submit(download_media, url)
             file_path = future.result()
 
             with open(file_path, 'rb') as media:
@@ -153,9 +170,9 @@ app = Flask(__name__)
 # Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
 def send_welcome_bot2(message):
-    bot2.reply_to(message, "Welcome! Paste the link of the Instagram content you want to download.")
+    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
 
-# Handle Instagram links
+# Handle media links
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
