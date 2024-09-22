@@ -63,16 +63,24 @@ def extract_instagram_media_id(url):
         raise Exception("Invalid Instagram URL")
 
 # Function to fetch media URL from Instagram Graph API
+# Function to fetch media URL from Instagram Graph API
 def get_instagram_media_url(media_id):
     url = f"https://graph.instagram.com/{media_id}?fields=id,media_type,media_url,thumbnail_url&access_token={INSTAGRAM_ACCESS_TOKEN}"
+    
     response = requests.get(url)
+    
     if response.status_code == 200:
         data = response.json()
-        media_url = data['media_url']
-        return media_url
+        if 'media_url' in data:
+            media_url = data['media_url']
+            logging.info(f"Instagram media URL fetched: {media_url}")
+            return media_url
+        else:
+            logging.error(f"No media URL found in response: {data}")
+            raise Exception("No media URL found in Instagram response.")
     else:
         logging.error(f"Instagram API error: {response.status_code} {response.text}")
-        raise Exception("Failed to get media from Instagram")
+        raise Exception(f"Failed to get media from Instagram: {response.status_code} {response.text}")
 
 # Function to download Instagram media
 def download_instagram_media(url):
