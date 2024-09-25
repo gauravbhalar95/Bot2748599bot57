@@ -188,7 +188,7 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
+    bot2.set_webhook(url=f'https://comforting-vacherin-7332bc.netlify.app/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
