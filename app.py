@@ -189,7 +189,7 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url=f'https://decisive-merridie-telegrambotnew-79866a84.koyeb.app/{API_TOKEN_2}', timeout=60)
+    bot2.set_webhook(url=f'https://{os.environ.get("KOYEB_URL")}/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
