@@ -166,6 +166,7 @@ def run_task(message):
 
 # Flask app setup
 app = Flask(__name__)
+app.config['DEBUG'] = True
 
 # Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
