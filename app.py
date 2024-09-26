@@ -64,7 +64,7 @@ def download_media(url):
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'socket_timeout': 15,
+            'socket_timeout': 60,
         }
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
@@ -83,7 +83,7 @@ def download_media(url):
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'socket_timeout': 15,
+            'socket_timeout': 60,
         }
 
     elif 'youtube.com' in url or 'youtu.be' in url:
@@ -95,7 +95,7 @@ def download_media(url):
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'socket_timeout': 15,
+            'socket_timeout': 60,
             'cookiefile': cookies_file,
         }
 
@@ -104,7 +104,7 @@ def download_media(url):
         ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'socket_timeout': 15,
+            'socket_timeout': 60,
         }
 
     else:
