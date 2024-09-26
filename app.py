@@ -11,6 +11,7 @@ import time
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram channel ID, like '@YourChannel'
+KOYEB_URL = os.getenv("KOYEB_URL")  # Koyeb deployment URL
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -25,7 +26,6 @@ if not os.path.exists(output_dir):
 
 # Logging setup
 logging.basicConfig(level=logging.DEBUG)
-
 
 # Function to check the user status in the channel
 def check_user_status(user_id):
@@ -155,12 +155,15 @@ def webhook():
     retries = 3
     while retries > 0:
         try:
-            bot2.set_webhook(url=f'https://{os.environ.get("KOYEB_URL")}/{API_TOKEN_2}', timeout=60)
+            webhook_url = f'https://{KOYEB_URL}/{API_TOKEN_2}'
+            bot2.set_webhook(url=webhook_url, timeout=60)
+            logging.info(f"Webhook set to {webhook_url}")
             return "Webhook set", 200
         except requests.exceptions.ConnectionError as e:
-            print(f"Connection error: {e}")
+            logging.error(f"Connection error: {e}")
             retries -= 1
             time.sleep(5)
+    return "Failed to set webhook after retries", 500
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
