@@ -54,22 +54,59 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 15,
-    }
-
     if 'instagram.com' in url:
         logging.info("Processing Instagram URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+
     elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.info("Processing Twitter/X/Threads URL")
+        logging.info("Processing Twitter/Threads/X URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+        }
+
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.info("Processing YouTube URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'socket_timeout': 15,
+            'cookiefile': cookies_file,
+        }
+
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+            'socket_timeout': 15,
+        }
+
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
@@ -82,6 +119,7 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
+
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
