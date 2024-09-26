@@ -126,7 +126,7 @@ def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             future = executor.submit(download_media, url)
             file_path = future.result()
 
