@@ -6,6 +6,8 @@ import telebot
 import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
+import time
+import requests
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -189,6 +191,15 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
+retries = 3
+while retries > 0:
+    try:
+        bot2.remove_webhook()
+        break  # Exit the loop if successful
+    except requests.exceptions.ConnectionError as e:
+        print(f"Connection error: {e}")
+        retries -= 1
+        time.sleep(5)
     bot2.set_webhook(url=f'https://{os.environ.get("KOYEB_URL")}/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
