@@ -7,11 +7,10 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
-import requests
 
 # Load API tokens and channel IDs from environment variables
-API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
+API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram channel ID, like '@YourChannel'
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -54,59 +53,22 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,
+        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'socket_timeout': 15,
+    }
+
     if 'instagram.com' in url:
         logging.info("Processing Instagram URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 15,
-        }
-        if '/stories/' in url:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
-            ydl_opts['format'] = 'best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-
     elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.info("Processing Twitter/Threads/X URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 15,
-        }
-
+        logging.info("Processing Twitter/X/Threads URL")
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.info("Processing YouTube URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 15,
-            'cookiefile': cookies_file,
-        }
-
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'socket_timeout': 15,
-        }
-
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
@@ -125,7 +87,6 @@ def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        # Use a thread pool executor to manage threads
         with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url)
             file_path = future.result()
@@ -179,7 +140,6 @@ def send_welcome_bot2(message):
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
-    # Start a new thread for the task to avoid blocking the bot
     threading.Thread(target=run_task, args=(message,)).start()
 
 # Flask routes for webhook handling
@@ -191,17 +151,15 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-retries = 3
-while retries > 0:
-    try:
-        bot2.remove_webhook()
-        break  # Exit the loop if successful
-    except requests.exceptions.ConnectionError as e:
-        print(f"Connection error: {e}")
-        retries -= 1
-        time.sleep(5)
-    bot2.set_webhook(url=f'https://{os.environ.get("KOYEB_URL")}/{API_TOKEN_2}', timeout=60)
-    return "Webhook set", 200
+    retries = 3
+    while retries > 0:
+        try:
+            bot2.set_webhook(url=f'https://{os.environ.get("KOYEB_URL")}/{API_TOKEN_2}', timeout=60)
+            return "Webhook set", 200
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error: {e}")
+            retries -= 1
+            time.sleep(5)
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
