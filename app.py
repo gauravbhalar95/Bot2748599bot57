@@ -24,7 +24,8 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging setup
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+
 
 # Function to check the user status in the channel
 def check_user_status(user_id):
