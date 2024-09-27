@@ -80,16 +80,34 @@ def download_media(url):
 
     elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
         logging.info("Processing Twitter/Threads/X URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 60,
-        }
+        def download_media(url):
+    logging.info(f"Attempting to download media from URL: {url}")
+    
+    # yt-dlp options
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'socket_timeout': 60,
+    }
+    
+    # Add sanitization to the filename in 'outtmpl'
+    sanitized_filename = sanitize_filename(url)
+    ydl_opts['outtmpl'] = f'{output_dir}{sanitized_filename}.%(ext)s'
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+        return file_path
+    except Exception as e:
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
+
 
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.info("Processing YouTube URL")
