@@ -109,16 +109,14 @@ def download_media(url):
         raise
 
 
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.info("Processing YouTube URL")
-        ydl_opts = {
+    ydl_opts = {
             'format': 'best',
             'outtmpl': f'{output_dir}%(title)s.%(ext)s',
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'socket_timeout': 60,
+            'socket_timeout': 15,
             'cookiefile': cookies_file,
         }
 
