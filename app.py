@@ -45,10 +45,15 @@ def check_user_status(user_id):
         return 'error'
 
 # Function to sanitize filenames
+# Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.strip()[:max_length]
+    # Replace special characters with underscores or remove them
+    filename = re.sub(r'[\\/*?:"<>|]', "_", filename)
+    filename = re.sub(r'https?://\S+', '', filename)  # Remove URLs from the filename
+    filename = filename.strip()[:max_length]
+    return filename
+
 
 # Function to download media
 def download_media(url):
