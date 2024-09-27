@@ -45,93 +45,44 @@ def check_user_status(user_id):
         return 'error'
 
 # Function to sanitize filenames
-# Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
-    # Replace special characters with underscores or remove them
     filename = re.sub(r'[\\/*?:"<>|]', "_", filename)
     filename = re.sub(r'https?://\S+', '', filename)  # Remove URLs from the filename
     filename = filename.strip()[:max_length]
     return filename
 
-
 # Function to download media
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
-    if 'instagram.com' in url:
-        logging.info("Processing Instagram URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 60,
-        }
-        if '/stories/' in url:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
-            ydl_opts['format'] = 'best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-
-    elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.info("Processing Twitter/Threads/X URL")
-        def download_media(url):
-    logging.info(f"Attempting to download media from URL: {url}")
-    
-    # yt-dlp options
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
+        'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 60,
     }
-    
-    # Add sanitization to the filename in 'outtmpl'
-    sanitized_filename = sanitize_filename(url)
-    ydl_opts['outtmpl'] = f'{output_dir}{sanitized_filename}.%(ext)s'
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-        return file_path
-    except Exception as e:
-        logging.error(f"yt-dlp download error: {str(e)}")
-        raise
 
-
-    ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'socket_timeout': 15,
-            'cookiefile': cookies_file,
-        }
-
+    # Handle different platforms
+    if 'instagram.com' in url:
+        logging.info("Processing Instagram URL")
+        if '/stories/' in url:
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com']):
+        logging.info("Processing Twitter/X/Threads URL")
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-            'socket_timeout': 60,
-        }
-
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
 
+    # Download using yt-dlp
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -140,7 +91,6 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
-
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
