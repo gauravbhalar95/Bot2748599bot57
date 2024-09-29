@@ -74,10 +74,12 @@ def download_media(url):
             ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
         elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube']):
+    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube.com']):
         logging.info("Processing Twitter/X/Threads URL")
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
+    elif 'youtube.com' in url:
+        logging.info("Processing youtube URL")
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
