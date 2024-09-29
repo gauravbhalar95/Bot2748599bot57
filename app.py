@@ -7,7 +7,6 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
-import subprocess
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
@@ -27,20 +26,6 @@ if not os.path.exists(output_dir):
 
 # Logging setup
 logging.basicConfig(level=logging.DEBUG)
-
-# Function to check if ffmpeg is installed
-def check_ffmpeg_installed():
-    try:
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
-        logging.info("ffmpeg installed successfully:\n" + result.stdout)
-        return True
-    except Exception as e:
-        logging.error(f"ffmpeg not installed: {e}")
-        return False
-
-# Check if ffmpeg is installed
-if not check_ffmpeg_installed():
-    logging.error("ffmpeg is not installed. Please install ffmpeg.")
 
 # Function to check the user status in the channel
 def check_user_status(user_id):
@@ -72,7 +57,7 @@ def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bestvideo[height<=1080]+bestaudio/best',  # Download the best video up to 1080p with the best audio
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'postprocessors': [{
