@@ -44,6 +44,12 @@ def check_user_status(user_id):
         logging.error(f"Error checking user status: {e}")
         return 'error'
 
+# Function to sanitize URLs (remove unwanted parameters)
+def sanitize_url(url):
+    if '?' in url:
+        url = url.split('?')[0]  # Remove query parameters
+    return url.strip()
+
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
@@ -53,12 +59,12 @@ def sanitize_filename(filename, max_length=200):
     return filename
 
 # Function to download media
-def download_media(url):
-    logging.info(f"Attempting to download media from URL: {url}")
+def download_media(url, quality):
+    logging.info(f"Attempting to download media from URL: {url} with quality: {quality}")
 
-    # Set download options to avoid merging formats
+    # Set download options to specify video quality
     ydl_opts = {
-        'format': 'best',  # Avoid separate audio/video formats to prevent merging
+        'format': quality,  # Allow user to choose quality
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'noplaylist': True,  # Avoid playlists for simplicity
@@ -91,12 +97,12 @@ def download_media(url):
         raise
 
 # Function to download media and send it asynchronously with progress
-def download_and_send(message, url):
+def download_and_send(message, url, quality):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future = executor.submit(download_media, url)
+            future = executor.submit(download_media, url, quality)
             file_path = future.result()
 
             with open(file_path, 'rb') as media:
@@ -116,13 +122,13 @@ def download_and_send(message, url):
 # Function to run tasks after admin verification
 def run_task(message):
     try:
-        url = message.text
+        url = sanitize_url(message.text)  # Sanitize the URL before processing
         user_id = message.from_user.id
         status = check_user_status(user_id)
 
         if status == 'admin':
-            bot2.reply_to(message, "Admin verification successful. Starting download...")
-            download_and_send(message, url)
+            bot2.reply_to(message, "Admin verification successful. Please choose video quality (e.g., 'best', '720', '1080'):")
+            bot2.register_next_step_handler(message, get_quality, url)  # Move to next step to get quality
         elif status == 'member':
             bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
         elif status == 'banned':
@@ -134,6 +140,14 @@ def run_task(message):
     except Exception as e:
         bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
         logging.error(f"Task execution failed: {e}")
+
+# Function to get video quality from the user
+def get_quality(message, url):
+    quality = message.text.strip()
+    if quality not in ['best', '720', '1080', '480', '360']:
+        bot2.reply_to(message, "Invalid quality selected. Please choose 'best', '720', '1080', '480', or '360'.")
+        return
+    download_and_send(message, url, quality)
 
 # Flask app setup
 app = Flask(__name__)
