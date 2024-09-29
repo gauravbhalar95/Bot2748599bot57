@@ -58,7 +58,7 @@ def download_media(url):
 
     # Set download options to avoid merging formats
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',  # Avoid separate audio/video formats to prevent merging
+        'format': 'best',  # Avoid separate audio/video formats to prevent merging
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'noplaylist': True,  # Avoid playlists for simplicity
