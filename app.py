@@ -7,6 +7,7 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
+from moviepy.editor import VideoFileClip
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
@@ -58,9 +59,9 @@ def sanitize_filename(filename, max_length=200):
     filename = filename.strip()[:max_length]
     return filename
 
-# Function to download and convert media
-def download_and_convert_media(url):
-    logging.info(f"Attempting to download and convert media from URL: {url}")
+# Function to download media
+def download_media(url):
+    logging.info(f"Attempting to download media from URL: {url}")
 
     # Set download options for highest quality
     ydl_opts = {
@@ -69,17 +70,12 @@ def download_and_convert_media(url):
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'noplaylist': True,  # Avoid playlists for simplicity
         'socket_timeout': 60,
-        'postprocessors': [{  # Add conversion step
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',  # Convert to mp4 format
-        }],
     }
 
     try:
         # Handle different platforms
         if 'youtube.com' in url or 'youtu.be' in url:
             logging.info("Processing YouTube URL")
-            ydl_opts['format'] = 'best'
         elif 'instagram.com' in url:
             logging.info("Processing Instagram URL")
             if '/stories/' in url:
@@ -101,14 +97,34 @@ def download_and_convert_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Function to convert video to the highest quality
+def convert_video(input_file):
+    logging.info(f"Converting video: {input_file}")
+
+    output_file = input_file.replace('.webm', '.mp4').replace('.mkv', '.mp4')  # Output to mp4 format
+
+    try:
+        video = VideoFileClip(input_file)
+        video.write_videofile(output_file, codec='libx264', audio_codec='aac')
+        video.close()
+        os.remove(input_file)  # Remove original file after conversion
+        return output_file
+    except Exception as e:
+        logging.error(f"Video conversion error: {str(e)}")
+        raise
+
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future = executor.submit(download_and_convert_media, url)
+            future = executor.submit(download_media, url)
             file_path = future.result()
+
+            # Convert the video to highest quality after downloading
+            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                file_path = convert_video(file_path)
 
             with open(file_path, 'rb') as media:
                 if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
