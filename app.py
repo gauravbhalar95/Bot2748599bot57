@@ -64,6 +64,7 @@ def download_media(url):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
+        'noplaylist': True,  # Avoid playlists for simplicity
         'socket_timeout': 60,
     }
 
