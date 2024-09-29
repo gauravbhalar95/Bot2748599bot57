@@ -58,51 +58,56 @@ def sanitize_filename(filename, max_length=200):
     filename = filename.strip()[:max_length]
     return filename
 
-# Function to download media
-def download_media(url, quality):
-    logging.info(f"Attempting to download media from URL: {url} with quality: {quality}")
+# Function to download and convert media
+def download_and_convert_media(url):
+    logging.info(f"Attempting to download and convert media from URL: {url}")
 
-    # Set download options to specify video quality
+    # Set download options for highest quality
     ydl_opts = {
-        'format': quality,  # Allow user to choose quality
+        'format': 'best',  # Automatically choose the best available format
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'noplaylist': True,  # Avoid playlists for simplicity
         'socket_timeout': 60,
+        'postprocessors': [{  # Add conversion step
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',  # Convert to mp4 format
+        }],
     }
 
-    # Handle different platforms
-    if 'instagram.com' in url:
-        logging.info("Processing Instagram URL")
-        if '/stories/' in url:
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-        elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube.com']):
-        logging.info("Processing Twitter/X/Threads/YouTube URL")
-    elif 'facebook.com' in url:
-        logging.info("Processing Facebook URL")
-    else:
-        logging.error(f"Unsupported URL: {url}")
-        raise Exception("Unsupported URL!")
-
-    # Download using yt-dlp
     try:
+        # Handle different platforms
+        if 'youtube.com' in url or 'youtu.be' in url:
+            logging.info("Processing YouTube URL")
+            ydl_opts['format'] = 'best'
+        elif 'instagram.com' in url:
+            logging.info("Processing Instagram URL")
+            if '/stories/' in url:
+                ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+            elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
+                ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+        elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'facebook.com']):
+            logging.info("Processing other social media URLs")
+        else:
+            logging.error(f"Unsupported URL: {url}")
+            raise Exception("Unsupported URL!")
+
+        # Download using yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path
+            return file_path
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
 # Function to download media and send it asynchronously with progress
-def download_and_send(message, url, quality):
+def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future = executor.submit(download_media, url, quality)
+            future = executor.submit(download_and_convert_media, url)
             file_path = future.result()
 
             with open(file_path, 'rb') as media:
@@ -127,8 +132,8 @@ def run_task(message):
         status = check_user_status(user_id)
 
         if status == 'admin':
-            bot2.reply_to(message, "Admin verification successful. Please choose video quality (e.g., 'best', '720', '1080'):")
-            bot2.register_next_step_handler(message, get_quality, url)  # Move to next step to get quality
+            bot2.reply_to(message, "Admin verification successful. Downloading the highest quality media...")
+            download_and_send(message, url)  # Directly call download_and_send
         elif status == 'member':
             bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
         elif status == 'banned':
@@ -140,14 +145,6 @@ def run_task(message):
     except Exception as e:
         bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
         logging.error(f"Task execution failed: {e}")
-
-# Function to get video quality from the user
-def get_quality(message, url):
-    quality = message.text.strip()
-    if quality not in ['best', '720', '1080', '480', '360']:
-        bot2.reply_to(message, "Invalid quality selected. Please choose 'best', '720', '1080', '480', or '360'.")
-        return
-    download_and_send(message, url, quality)
 
 # Flask app setup
 app = Flask(__name__)
