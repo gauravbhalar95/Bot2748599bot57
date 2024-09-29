@@ -5,4 +5,5 @@ telebot
 python-telegram-bot
 yt-dlp==2024.08.06
 beautifulsoup4==4.12.3
+moviepy
 
