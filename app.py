@@ -7,21 +7,42 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
+import subprocess
 
+# Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram channel ID
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram channel ID, like '@YourChannel'
 KOYEB_URL = os.getenv("KOYEB_URL")  # Koyeb deployment URL
 
+# Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
+# Directory to save downloaded files
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
+# Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
+# Logging setup
 logging.basicConfig(level=logging.DEBUG)
 
+# Function to check if ffmpeg is installed
+def check_ffmpeg_installed():
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+        logging.info("ffmpeg installed successfully:\n" + result.stdout)
+        return True
+    except Exception as e:
+        logging.error(f"ffmpeg not installed: {e}")
+        return False
+
+# Check if ffmpeg is installed
+if not check_ffmpeg_installed():
+    logging.error("ffmpeg is not installed. Please install ffmpeg.")
+
+# Function to check the user status in the channel
 def check_user_status(user_id):
     try:
         member = bot2.get_chat_member(CHANNEL_ID, user_id)
@@ -38,13 +59,15 @@ def check_user_status(user_id):
         logging.error(f"Error checking user status: {e}")
         return 'error'
 
+# Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "_", filename)
-    filename = re.sub(r'https?://\S+', '', filename)
+    filename = re.sub(r'https?://\S+', '', filename)  # Remove URLs from the filename
     filename = filename.strip()[:max_length]
     return filename
 
+# Function to download media
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
@@ -59,12 +82,22 @@ def download_media(url):
         'socket_timeout': 60,
     }
 
-    if any(domain in url for domain in ['instagram.com', 'twitter.com', 'x.com', 'facebook.com', 'youtube.com', 'youtu.be']):
-        logging.info(f"Processing URL from a supported platform: {url}")
+    # Handle different platforms
+    if 'instagram.com' in url:
+        logging.info("Processing Instagram URL")
+        if '/stories/' in url:
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube.com']):
+        logging.info("Processing Twitter/X/Threads/YouTube URL")
+    elif 'facebook.com' in url:
+        logging.info("Processing Facebook URL")
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
 
+    # Download using yt-dlp
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -74,6 +107,7 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
@@ -96,6 +130,7 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
+# Function to run tasks after admin verification
 def run_task(message):
     try:
         url = message.text
@@ -117,18 +152,22 @@ def run_task(message):
         bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
         logging.error(f"Task execution failed: {e}")
 
+# Flask app setup
 app = Flask(__name__)
 app.config['DEBUG'] = True
 
+# Bot 2 commands and handlers
 @bot2.message_handler(commands=['start'])
 def send_welcome_bot2(message):
     bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
 
+# Handle media links
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
     threading.Thread(target=run_task, args=(message,)).start()
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
