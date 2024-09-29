@@ -56,14 +56,11 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
+    # Set download options to avoid merging formats
     ydl_opts = {
-        'format': 'bestvideo[height>=720]+bestaudio/best',  # Download the best video up to 1080p with the best audio
+        'format': 'best[height==1080]',  # Avoid separate audio/video formats to prevent merging
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
         'noplaylist': True,  # Avoid playlists for simplicity
         'socket_timeout': 60,
     }
