@@ -104,7 +104,7 @@ def download_and_send(message, url):
             file_path = future.result()
 
             file_size = os.path.getsize(file_path)
-            if file_size > 50 * 1024 * 1024:
+            if file_size > 500 * 2160 * 1024:
                 bot2.reply_to(message, "The file is too large to be sent via Telegram.")
                 os.remove(file_path)
                 return
