@@ -7,7 +7,6 @@ import yt_dlp
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import time
-from moviepy.editor import VideoFileClip
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
@@ -45,12 +44,6 @@ def check_user_status(user_id):
         logging.error(f"Error checking user status: {e}")
         return 'error'
 
-# Function to sanitize URLs (remove unwanted parameters)
-def sanitize_url(url):
-    if '?' in url:
-        url = url.split('?')[0]  # Remove query parameters
-    return url.strip()
-
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
@@ -63,54 +56,22 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
-    # Set download options for highest quality
     ydl_opts = {
-        'format': 'best',  # Automatically choose the best available format
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
+        'format': 'bestvideo+bestaudio/best',  # Combine best video and audio
+        'outtmpl': f'{output_dir}temp_file.part',  # Temporary file name
         'noplaylist': True,  # Avoid playlists for simplicity
         'socket_timeout': 60,
     }
 
     try:
-        # Handle different platforms
-        if 'youtube.com' in url or 'youtu.be' in url:
-            logging.info("Processing YouTube URL")
-        elif 'instagram.com' in url:
-            logging.info("Processing Instagram URL")
-            if '/stories/' in url:
-                ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-            elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
-                ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-        elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'facebook.com']):
-            logging.info("Processing other social media URLs")
-        else:
-            logging.error(f"Unsupported URL: {url}")
-            raise Exception("Unsupported URL!")
-
-        # Download using yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-            return file_path
+            # Rename the temp file to final file after download
+            final_file_path = os.path.join(output_dir, f"{info_dict['title']}.{info_dict['ext']}")
+            os.rename(os.path.join(output_dir, 'temp_file.part'), final_file_path)  # Rename temp file to final file
+        return final_file_path
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
-        raise
-
-# Function to convert video to the highest quality
-def convert_video(input_file):
-    logging.info(f"Converting video: {input_file}")
-
-    output_file = input_file.replace('.webm', '.mp4').replace('.mkv', '.mp4')  # Output to mp4 format
-
-    try:
-        video = VideoFileClip(input_file)
-        video.write_videofile(output_file, codec='libx264', audio_codec='aac')
-        video.close()
-        os.remove(input_file)  # Remove original file after conversion
-        return output_file
-    except Exception as e:
-        logging.error(f"Video conversion error: {str(e)}")
         raise
 
 # Function to download media and send it asynchronously with progress
@@ -118,13 +79,9 @@ def download_and_send(message, url):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:  # Adjusted for performance
             future = executor.submit(download_media, url)
             file_path = future.result()
-
-            # Convert the video to highest quality after downloading
-            if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                file_path = convert_video(file_path)
 
             with open(file_path, 'rb') as media:
                 if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
@@ -143,13 +100,13 @@ def download_and_send(message, url):
 # Function to run tasks after admin verification
 def run_task(message):
     try:
-        url = sanitize_url(message.text)  # Sanitize the URL before processing
+        url = message.text
         user_id = message.from_user.id
         status = check_user_status(user_id)
 
         if status == 'admin':
-            bot2.reply_to(message, "Admin verification successful. Downloading the highest quality media...")
-            download_and_send(message, url)  # Directly call download_and_send
+            bot2.reply_to(message, "Admin verification successful. Starting download...")
+            download_and_send(message, url)
         elif status == 'member':
             bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
         elif status == 'banned':
