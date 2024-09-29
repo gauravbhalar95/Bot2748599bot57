@@ -57,7 +57,7 @@ def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
-        'format': 'bestvideo[height<=1080]+bestaudio/best',  # Download the best video up to 1080p with the best audio
+        'format': 'bestvideo[height>=720]+bestaudio/best',  # Download the best video up to 1080p with the best audio
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file if os.path.exists(cookies_file) else None,
         'postprocessors': [{
