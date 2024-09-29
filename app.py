@@ -74,12 +74,12 @@ def download_media(url):
             ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
         elif any(path in url for path in ['/reel/', '/p/', '/tv/']):
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube.com']):
-        logging.info("Processing Twitter/X/Threads URL")
+    elif any(domain in url for domain in ['twitter.com', 'x.com', 'threads.com', 'youtube.com', 'youtu.be']):
+        logging.info("Processing Twitter/X/Threads/YouTube URL")
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
-    elif 'youtube.com' in url:
-        logging.info("Processing youtube URL")
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.info("Processing YouTube URL")
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
@@ -103,8 +103,14 @@ def download_and_send(message, url):
             future = executor.submit(download_media, url)
             file_path = future.result()
 
+            file_size = os.path.getsize(file_path)
+            if file_size > 50 * 1024 * 1024:
+                bot2.reply_to(message, "The file is too large to be sent via Telegram.")
+                os.remove(file_path)
+                return
+
             with open(file_path, 'rb') as media:
-                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                if file_path.lower().endswith('.mp4'):
                     bot2.send_video(message.chat.id, media)
                 elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                     bot2.send_photo(message.chat.id, media)
