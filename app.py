@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 from PIL import Image
 from io import BytesIO
+import subprocess
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -166,52 +167,6 @@ def download_instagram_media(url, username=None, password=None):
     except Exception as e:
         logging.error(f"Failed to download Instagram media: {str(e)}")
 
-# Function to download Twitter media
-def download_twitter_media(url, username=None, password=None):
-    try:
-        logging.debug(f"Attempting to download Twitter media from URL: {url}")
-
-        # Set up headers for Twitter API
-        headers = {
-            'User-Agent': 'Twitter 12.18.0 Android (#101)',
-            'Accept': '*/*',
-            'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'X-Twitter-Client': 'Twitter for Android',
-            'X-Twitter-Client-Version': '12.18.0',
-        }
-
-        # Make a GET request to the Twitter API
-        response = requests.get(url, headers=headers)
-
-        # Check if the response was successful
-        if response.status_code == 200:
-            # Get the media URL from the response
-            media_url = response.json()['includes']['media'][0]['media_url']
-
-            # Download the media
-            media_response = requests.get(media_url, headers=headers)
-
-            # Check if the media download was successful
-            if media_response.status_code == 200:
-                # Save the media to a file
-                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'wb') as media_file:
-                    media_file.write(media_response.content)
-
-                # Send the media to the user
-                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'rb') as media_file:
-                    bot2.send_photo(message.chat.id, media_file)
-
-                # Remove the media file
-                os.remove(f'{output_dir}{sanitize_filename(media_url)}.jpg')
-            else:
-                logging.error(f"Failed to download Twitter media: {media_response.status_code}")
-        else:
-            logging.error(f"Failed to download Twitter media: {response.status_code}")
-
-    except Exception as e:
-        logging.error(f"Failed to download Twitter media: {str(e)}")
-
 # Function to download Facebook media
 def download_facebook_media(url, username=None, password=None):
     try:
@@ -256,6 +211,22 @@ def download_facebook_media(url, username=None, password=None):
     except Exception as e:
         logging.error(f"Failed to download Facebook media: {str(e)}")
 
+# Function to check if ffmpeg is installed
+def check_ffmpeg_installed():
+    try:
+        subprocess.check_output(['ffmpeg', '-version'])
+        return True
+    except FileNotFoundError:
+        return False
+
+# Function to install ffmpeg
+def install_ffmpeg():
+    try:
+        os.system('sudo apt-get install ffmpeg')
+        return True
+    except Exception as e:
+        return False
+
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
@@ -271,7 +242,13 @@ def handle_links(message):
     # Check if the URL is an Instagram media URL
     if 'instagram.com' in url:
         # Download and send the media
-        download_instagram_media(url, username, password)
+        if not check_ffmpeg_installed():
+            if install_ffmpeg():
+                download_instagram_media(url, username, password)
+            else:
+                bot2.reply_to(message, "Failed to download. Error: Unable to install ffmpeg.")
+        else:
+            download_instagram_media(url, username, password)
     # Check if the URL is a Twitter media URL
     elif 'twitter.com' in url or 'x.com' in url:
         # Download and send the media
