@@ -12,6 +12,9 @@ import time
 API_TOKEN_2 = os.getenv('API_TOKEN_2')  # Your bot token
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram channel ID, like '@YourChannel'
 KOYEB_URL = os.getenv("KOYEB_URL")  # Koyeb deployment URL
+INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')  # Your Instagram username
+INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')  # Your Instagram password
+
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
@@ -35,24 +38,23 @@ def sanitize_filename(filename, max_length=200):
     filename = filename.strip()[:max_length]
     return filename
 
-# Function to download media
-# Function to download media
+# Function to download media from various platforms
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'socket_timeout': 15,
+        'socket_timeout': 30,
+        'nocheckcertificate': True,
     }
 
     if 'instagram.com' in url:
         logging.info("Processing Instagram URL")
-        ydl_opts['cookiefile'] = cookies_file  # Using cookies to authenticate
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }]
+        ydl_opts['username'] = INSTAGRAM_USERNAME
+        ydl_opts['password'] = INSTAGRAM_PASSWORD
+        ydl_opts['cookiefile'] = cookies_file
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
 
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
@@ -61,24 +63,24 @@ def download_media(url):
             ydl_opts['format'] = 'best'
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
-    elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.info("Processing Twitter/Threads/X URL")
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }]
-
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.info("Processing YouTube URL")
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }]
+    elif 'twitter.com' in url:
+        logging.info("Processing Twitter URL")
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        ydl_opts['merge_output_format'] = 'mp4'
+        ydl_opts['outtmpl'] = f'{output_dir}twitter_%(id)s.%(ext)s'
 
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL")
-        ydl_opts['format'] = 'best'
-    
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+        ydl_opts['outtmpl'] = f'{output_dir}facebook_%(title)s.%(ext)s'
+
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.info("Processing YouTube URL")
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
@@ -93,33 +95,6 @@ def download_media(url):
         raise
 
 
-# Function to download all media from a URL
-def download_all_media(url):
-    logging.info(f"Attempting to download all media from URL: {url}")
-
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'socket_timeout': 15,
-    }
-
-    if 'instagram.com' in url:
-        logging.info("Processing Instagram URL for all media")
-        ydl_opts['extract_flat'] = True  # Extract video URLs without downloading
-        ydl_opts['noplaylist'] = True  # Prevent playlist download
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            return [ydl.prepare_filename(entry) for entry in info_dict['entries']]
-    except Exception as e:
-        logging.error(f"yt-dlp download error: {str(e)}")
-        raise
 
 # Function to download media and send it asynchronously
 def download_and_send(message, url):
