@@ -5,12 +5,10 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
-import subprocess
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
-KOYEB_URL = os.getenv('KOYEB_URL')
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -20,20 +18,15 @@ telebot.logger.setLevel(logging.DEBUG)
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'  # YouTube cookies file
 
-# Create the downloads directory if it does not exist
+# Ensure the downloads directory exists
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-    os.chmod(output_dir, 0o777)  # Set full permissions to avoid permission issues
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Function to update yt-dlp using subprocess
-def update_yt_dlp():
-    try:
-        subprocess.run(['yt-dlp', '-U'], check=True)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Failed to update yt-dlp: {e}")
+# Ensure yt-dlp is updated
+os.system('yt-dlp -U')
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
@@ -48,20 +41,22 @@ def download_media(url, username=None, password=None):
     # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 15,
+        'retries': 5,  # Retry on download errors
     }
 
-    # Instagram login
+    # Instagram login, if credentials are provided
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
+    # Add specific logging for URL types
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -75,16 +70,24 @@ def download_media(url, username=None, password=None):
         raise Exception("Unsupported URL!")
 
     try:
+        # Attempt the download
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+
+        # Confirm if the file exists after download
+        if not os.path.exists(file_path):
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                # If the .part file exists, rename it to the final file
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+            else:
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
+
         return file_path
-    except KeyError as e:
-        if str(e) == "'config'":
-            logging.error(f"Extractor error: {e}")
-            raise Exception("Extractor error: possibly an issue with yt-dlp or the site.")
-        else:
-            raise
+
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
@@ -121,12 +124,8 @@ def handle_links(message):
     username = None
     password = None
     if "@" in url:  # Example: url containing "username:password"
-        try:
-            username, password = url.split('@', 1)  # Assuming format: username:password@url
-            url = password  # Change url to actual URL
-        except ValueError:
-            bot2.reply_to(message, "Invalid format for Instagram credentials. Please use 'username:password@url'.")
-            return
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
 
     # Start a new thread for the task to avoid blocking the bot
     threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
@@ -143,16 +142,9 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-       
- # Set webhook dynamically using KOYEB_URL from environment
-    webhook_url = f'{KOYEB_URL}/{API_TOKEN_2}'
-    bot2.set_webhook(url=webhook_url, timeout=60)
-    
-    return f"Webhook set to {webhook_url}", 200
+    bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
+    return "Webhook set", 200
 
 if __name__ == "__main__":
-    # Ensure yt-dlp is updated
-    update_yt_dlp()
-
-    # Run the Flask app on a non-privileged port
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), debug=True)
+    # Run the Flask app in debug mode
+    app.run(host='0.0.0.0', port=80, debug=True)
