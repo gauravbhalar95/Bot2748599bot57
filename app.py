@@ -40,7 +40,7 @@ def download_media(url, username=None, password=None):
 
     # Set up options for yt-dlp
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',  # Try mp4 format first
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
