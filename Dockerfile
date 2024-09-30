@@ -3,6 +3,8 @@ FROM python:3.9-slim
 
 # Set the working directory
 WORKDIR /app
+RUN mkdir -p /app/downloads && chmod -R 777 /app/downloads
+
 
 # Copy the current directory contents into the container at /app
 COPY . /app
