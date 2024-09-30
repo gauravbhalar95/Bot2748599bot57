@@ -5,6 +5,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
+import subprocess
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -21,12 +22,17 @@ cookies_file = 'cookies.txt'  # YouTube cookies file
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
+    os.chmod(output_dir, 0o777)  # Set full permissions to avoid permission issues
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
+# Function to update yt-dlp using subprocess
+def update_yt_dlp():
+    try:
+        subprocess.run(['yt-dlp', '-U'], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to update yt-dlp: {e}")
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
@@ -37,7 +43,7 @@ def sanitize_filename(filename, max_length=200):
 # Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
-    
+
     # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
@@ -114,8 +120,12 @@ def handle_links(message):
     username = None
     password = None
     if "@" in url:  # Example: url containing "username:password"
-        username, password = url.split('@', 1)  # Assuming format: username:password@url
-        url = password  # Change url to actual URL
+        try:
+            username, password = url.split('@', 1)  # Assuming format: username:password@url
+            url = password  # Change url to actual URL
+        except ValueError:
+            bot2.reply_to(message, "Invalid format for Instagram credentials. Please use 'username:password@url'.")
+            return
 
     # Start a new thread for the task to avoid blocking the bot
     threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
@@ -132,9 +142,12 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
+    bot2.set_webhook(url=f'https://<your-koyeb-app-url>/{API_TOKEN_2}', timeout=60)  # Update with your Koyeb URL
     return "Webhook set", 200
 
 if __name__ == "__main__":
-    # Run the Flask app in debug mode
+    # Ensure yt-dlp is updated
+    update_yt_dlp()
+
+    # Run the Flask app on a non-privileged port
     app.run(host='0.0.0.0', port=8080, debug=True)
