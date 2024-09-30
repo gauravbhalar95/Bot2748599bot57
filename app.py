@@ -22,13 +22,13 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging setup
-logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG for detailed logging
+logging.basicConfig(level=logging.INFO)
 
 # Function to check the user status in the channel
 def check_user_status(user_id):
     try:
         member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        logging.debug(f"User status: {member.status}")  # Log user status for debugging
+        logging.info(f"User status: {member.status}")
         if member.status in ['administrator', 'creator']:
             return 'admin'
         elif member.status == 'member':
@@ -84,9 +84,22 @@ def download_media(url):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
         return file_path
+    except KeyError as e:
+        logging.error(f"KeyError encountered: {e}")
+        raise
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
-        raise
+        # Attempt to update yt-dlp and retry
+        try:
+            logging.info("Attempting to update yt-dlp...")
+            os.system('yt-dlp -U')
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=True)
+                file_path = ydl.prepare_filename(info_dict)
+            return file_path
+        except Exception as update_err:
+            logging.error(f"yt-dlp update error: {str(update_err)}")
+            raise
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
