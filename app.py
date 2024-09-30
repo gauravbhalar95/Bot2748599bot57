@@ -24,6 +24,9 @@ if not os.path.exists(output_dir):
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
+# Ensure yt-dlp is updated
+os.system('yt-dlp -U')
+
 # Function to check the user status in the channel
 def check_user_status(user_id):
     try:
@@ -51,7 +54,7 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.info(f"Attempting to download media from URL: {url}")
     ydl_opts = {
-        'format': 'best',
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{
@@ -85,21 +88,14 @@ def download_media(url):
             file_path = ydl.prepare_filename(info_dict)
         return file_path
     except KeyError as e:
-        logging.error(f"KeyError encountered: {e}")
-        raise
+        if str(e) == "'config'":
+            logging.error(f"Extractor error: {e}")
+            raise Exception("Extractor error: possibly an issue with yt-dlp or the site.")
+        else:
+            raise
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
-        # Attempt to update yt-dlp and retry
-        try:
-            logging.info("Attempting to update yt-dlp...")
-            os.system('yt-dlp -U')
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=True)
-                file_path = ydl.prepare_filename(info_dict)
-            return file_path
-        except Exception as update_err:
-            logging.error(f"yt-dlp update error: {str(update_err)}")
-            raise
+        raise
 
 # Function to download media and send it asynchronously with progress
 def download_and_send(message, url):
