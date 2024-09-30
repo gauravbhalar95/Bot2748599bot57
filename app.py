@@ -1,174 +1,165 @@
 import os
 import logging
-import requests
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 
-# Load API tokens and other configurations from environment variables
-API_TOKEN = os.getenv('API_TOKEN')  # Your bot token
-KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb deployment URL
-INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')  # Instagram username
-INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')  # Instagram password
-COOKIES_FILE = os.getenv('COOKIES_FILE', 'cookies.txt')  # Kiwi Browser cookies file path
+# Load API tokens and channel IDs from environment variables
+API_TOKEN_2 = os.getenv('API_TOKEN_2')
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
 # Initialize the bot
-bot = telebot.TeleBot(API_TOKEN)
+bot2 = telebot.TeleBot(API_TOKEN_2)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
+cookies_file = 'cookies.txt'
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging setup
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
+
+# Function to check the user status in the channel
+def check_user_status(user_id):
+    try:
+        member = bot2.get_chat_member(CHANNEL_ID, user_id)
+        logging.info(f"User status: {member.status}")
+        if member.status in ['administrator', 'creator']:
+            return 'admin'
+        elif member.status == 'member':
+            return 'member'
+        elif member.status == 'kicked':
+            return 'banned'
+        else:
+            return 'not_member'
+    except Exception as e:
+        logging.error(f"Error checking user status: {e}")
+        return 'error'
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
-    filename = re.sub(r'[\\/*?:"<>|]', "_", filename)
-    filename = re.sub(r'https?://\S+', '', filename)  # Remove URLs from the filename
-    filename = filename.strip()[:max_length]
-    return filename
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
 
-# Function to login to Instagram and save cookies
-def login_instagram():
-    session = requests.Session()
-    login_url = 'https://www.instagram.com/accounts/login/ajax/'
-    session.headers.update({'User-Agent': 'Mozilla/5.0'})
-    
-    # Retrieve CSRF token
-    session.get('https://www.instagram.com')
-    csrf_token = session.cookies.get('csrftoken')
-    
-    session.headers.update({'X-CSRFToken': csrf_token})
-    payload = {
-        'username': INSTAGRAM_USERNAME,
-        'password': INSTAGRAM_PASSWORD,
+# Function to download media
+def download_media(url):
+    logging.info(f"Attempting to download media from URL: {url}")
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'socket_timeout': 15,
     }
-    
-    # Login
-    response = session.post(login_url, data=payload)
-    if response.status_code == 200 and response.json().get('authenticated'):
-        logging.info("Successfully logged into Instagram.")
-        # Save cookies to a file
-        with open(COOKIES_FILE, 'w') as f:
-            for cookie in session.cookies:
-                f.write(f"{cookie.name}={cookie.value}\n")
-        return True
+
+    if 'instagram.com' in url:
+        logging.info("Processing Instagram URL")
+        if '/stories/' in url:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
+        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
+            ydl_opts['format'] = 'best'
+            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
+    elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
+        logging.info("Processing Twitter/Threads/X URL")
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.info("Processing YouTube URL")
+    elif 'facebook.com' in url:
+        logging.info("Processing Facebook URL")
     else:
-        logging.error("Failed to log into Instagram.")
-        return False
+        logging.error(f"Unsupported URL: {url}")
+        raise Exception("Unsupported URL!")
 
-# Function to download media from Instagram
-def download_instagram(url):
-    logging.info(f"Downloading from Instagram: {url}")
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': COOKIES_FILE,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-# Function to download media from Twitter
-def download_twitter(url):
-    logging.info(f"Downloading from Twitter: {url}")
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': COOKIES_FILE,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-# Function to download media from Facebook
-def download_facebook(url):
-    logging.info(f"Downloading from Facebook: {url}")
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': COOKIES_FILE,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-# Function to download media from YouTube
-def download_youtube(url):
-    logging.info(f"Downloading from YouTube: {url}")
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': COOKIES_FILE,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-# Function to send media to the user
-def send_media(message, file_path):
-    with open(file_path, 'rb') as media:
-        if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-            bot.send_video(message.chat.id, media)
-        elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-            bot.send_photo(message.chat.id, media)
-        else:
-            bot.send_document(message.chat.id, media)
-
-# Function to handle links and download media
-def handle_links(message):
-    url = message.text
     try:
-        if 'instagram.com' in url:
-            if not os.path.exists(COOKIES_FILE):
-                login_instagram()
-            download_instagram(url)
-            send_media(message, output_dir + sanitize_filename(url) + '.mp4')
-        elif 'twitter.com' in url:
-            download_twitter(url)
-            send_media(message, output_dir + sanitize_filename(url) + '.mp4')
-        elif 'facebook.com' in url:
-            download_facebook(url)
-            send_media(message, output_dir + sanitize_filename(url) + '.mp4')
-        elif 'youtube.com' in url or 'youtu.be' in url:
-            download_youtube(url)
-            send_media(message, output_dir + sanitize_filename(url) + '.mp4')
-        else:
-            bot.reply_to(message, "Unsupported URL. Please send a valid media link.")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+        return file_path
     except Exception as e:
-        bot.reply_to(message, f"Failed to download media. Error: {str(e)}")
-        logging.error(f"Download error: {str(e)}")
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
+
+# Function to download media and send it asynchronously with progress
+def download_and_send(message, url):
+    try:
+        bot2.reply_to(message, "Downloading media, this may take some time...")
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future = executor.submit(download_media, url)
+            file_path = future.result()
+
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                    bot2.send_video(message.chat.id, media)
+                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
+
+            os.remove(file_path)
+
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+        logging.error(f"Download failed: {e}")
+
+# Function to run tasks after admin verification
+def run_task(message):
+    try:
+        url = message.text
+        user_id = message.from_user.id
+        status = check_user_status(user_id)
+
+        if status == 'admin':
+            bot2.reply_to(message, "Admin verification successful. Starting download...")
+            download_and_send(message, url)
+        elif status == 'member':
+            bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
+        elif status == 'banned':
+            bot2.reply_to(message, "You are banned from the channel.")
+        elif status == 'not_member':
+            bot2.reply_to(message, f"Please join the channel first: {CHANNEL_ID}")
+        else:
+            bot2.reply_to(message, "There was an error checking your status. Please try again later.")
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
+        logging.error(f"Task execution failed: {e}")
 
 # Flask app setup
 app = Flask(__name__)
 
-# Bot commands and handlers
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Welcome! To download media from Instagram, Twitter, Facebook, or YouTube, please send the link you want to download.")
+# Bot 2 commands and handlers
+@bot2.message_handler(commands=['start'])
+def send_welcome_bot2(message):
+    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
 
-# Handle media links automatically
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    handle_links(message)
+# Handle media links
+@bot2.message_handler(func=lambda message: True)
+def handle_links(message):
+    url = message.text
+    # Start a new thread for the task to avoid blocking the bot
+    threading.Thread(target=run_task, args=(message,)).start()
 
 # Flask routes for webhook handling
-@app.route('/' + API_TOKEN, methods=['POST'])
-def getMessage():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+@app.route('/' + API_TOKEN_2, methods=['POST'])
+def getMessage_bot2():
+    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
 @app.route('/')
 def webhook():
-    bot.remove_webhook()
-    webhook_url = f'https://{KOYEB_URL}/{API_TOKEN}'
-    bot.set_webhook(url=webhook_url)
-    logging.info(f"Webhook set to {webhook_url}")
+    bot2.remove_webhook()
+    bot2.set_webhook(url=f'https://bot2-mb9e.onrender.com/{API_TOKEN_2}', timeout=60)
     return "Webhook set", 200
 
-if __name__ == '__main__':
-    # Log into Instagram
-    login_instagram()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == "__main__":
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=80)
