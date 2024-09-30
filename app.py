@@ -46,7 +46,7 @@ def download_all_media(url):
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'socket_timeout': 30,
         'nocheckcertificate': True,
-        'cookiesfrombrowser': ('chrome',),  # Use browser cookies for Instagram
+        'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
