@@ -10,6 +10,7 @@ import subprocess
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
+KOYEB_URL = os.getenv('KOYEB_URL')
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -142,12 +143,16 @@ def getMessage_bot2():
 @app.route('/')
 def webhook():
     bot2.remove_webhook()
-    bot2.set_webhook(url=f'https://<your-koyeb-app-url>/{API_TOKEN_2}', timeout=60)  # Update with your Koyeb URL
-    return "Webhook set", 200
+       
+ # Set webhook dynamically using KOYEB_URL from environment
+    webhook_url = f'{KOYEB_URL}/{API_TOKEN_2}'
+    bot2.set_webhook(url=webhook_url, timeout=60)
+    
+    return f"Webhook set to {webhook_url}", 200
 
 if __name__ == "__main__":
     # Ensure yt-dlp is updated
     update_yt_dlp()
 
     # Run the Flask app on a non-privileged port
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)), debug=True)
