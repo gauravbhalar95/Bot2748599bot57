@@ -5,6 +5,9 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
+import requests
+from PIL import Image
+from io import BytesIO
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -40,7 +43,7 @@ def download_media(url, username=None, password=None):
 
     # Set up options for yt-dlp
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',  # Try highest quality video and audio
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -63,6 +66,7 @@ def download_media(url, username=None, password=None):
         logging.debug("Processing Twitter/X URL")
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.debug("Processing YouTube URL")
+        ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
     elif 'facebook.com' in url:
         logging.debug("Processing Facebook URL")
     else:
@@ -115,6 +119,143 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
+# Function to download Instagram media
+def download_instagram_media(url, username=None, password=None):
+    try:
+        logging.debug(f"Attempting to download Instagram media from URL: {url}")
+
+        # Set up headers for Instagram API
+        headers = {
+            'User-Agent': 'Instagram 154.0.0.39.118 Android (#129)',
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'X-IG-App-ID': '154354653489596',
+            'X-IG-Capabilities': '3brTvwA=',
+            'X-IG-Connection-Type': 'WIFI',
+        }
+
+        # Make a GET request to the Instagram API
+        response = requests.get(url, headers=headers)
+
+        # Check if the response was successful
+        if response.status_code == 200:
+            # Get the media URL from the response
+            media_url = response.json()['graphql']['shortcode_media']['display_url']
+
+            # Download the media
+            media_response = requests.get(media_url, headers=headers)
+
+            # Check if the media download was successful
+            if media_response.status_code == 200:
+                # Save the media to a file
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'wb') as media_file:
+                    media_file.write(media_response.content)
+
+                # Send the media to the user
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'rb') as media_file:
+                    bot2.send_photo(message.chat.id, media_file)
+
+                # Remove the media file
+                os.remove(f'{output_dir}{sanitize_filename(media_url)}.jpg')
+            else:
+                logging.error(f"Failed to download Instagram media: {media_response.status_code}")
+        else:
+            logging.error(f"Failed to download Instagram media: {response.status_code}")
+
+    except Exception as e:
+        logging.error(f"Failed to download Instagram media: {str(e)}")
+
+# Function to download Twitter media
+def download_twitter_media(url, username=None, password=None):
+    try:
+        logging.debug(f"Attempting to download Twitter media from URL: {url}")
+
+        # Set up headers for Twitter API
+        headers = {
+            'User-Agent': 'Twitter 12.18.0 Android (#101)',
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'X-Twitter-Client': 'Twitter for Android',
+            'X-Twitter-Client-Version': '12.18.0',
+        }
+
+        # Make a GET request to the Twitter API
+        response = requests.get(url, headers=headers)
+
+        # Check if the response was successful
+        if response.status_code == 200:
+            # Get the media URL from the response
+            media_url = response.json()['includes']['media'][0]['media_url']
+
+            # Download the media
+            media_response = requests.get(media_url, headers=headers)
+
+            # Check if the media download was successful
+            if media_response.status_code == 200:
+                # Save the media to a file
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'wb') as media_file:
+                    media_file.write(media_response.content)
+
+                # Send the media to the user
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'rb') as media_file:
+                    bot2.send_photo(message.chat.id, media_file)
+
+                # Remove the media file
+                os.remove(f'{output_dir}{sanitize_filename(media_url)}.jpg')
+            else:
+                logging.error(f"Failed to download Twitter media: {media_response.status_code}")
+        else:
+            logging.error(f"Failed to download Twitter media: {response.status_code}")
+
+    except Exception as e:
+        logging.error(f"Failed to download Twitter media: {str(e)}")
+
+# Function to download Facebook media
+def download_facebook_media(url, username=None, password=None):
+    try:
+        logging.debug(f"Attempting to download Facebook media from URL: {url}")
+
+        # Set up headers for Facebook API
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.3',
+            'Accept': '*/*',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+
+        # Make a GET request to the Facebook API
+        response = requests.get(url, headers=headers)
+
+        # Check if the response was successful
+        if response.status_code == 200:
+            # Get the media URL from the response
+            media_url = response.json()['data']['media']['image']['url']
+
+            # Download the media
+            media_response = requests.get(media_url, headers=headers)
+
+            # Check if the media download was successful
+            if media_response.status_code == 200:
+                # Save the media to a file
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'wb') as media_file:
+                    media_file.write(media_response.content)
+
+                # Send the media to the user
+                with open(f'{output_dir}{sanitize_filename(media_url)}.jpg', 'rb') as media_file:
+                    bot2.send_photo(message.chat.id, media_file)
+
+                # Remove the media file
+                os.remove(f'{output_dir}{sanitize_filename(media_url)}.jpg')
+            else:
+                logging.error(f"Failed to download Facebook media: {media_response.status_code}")
+        else:
+            logging.error(f"Failed to download Facebook media: {response.status_code}")
+
+    except Exception as e:
+        logging.error(f"Failed to download Facebook media: {str(e)}")
+
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
@@ -127,8 +268,25 @@ def handle_links(message):
         username, password = url.split('@', 1)  # Assuming format: username:password@url
         url = password  # Change url to actual URL
 
-    # Start a new thread for the task to avoid blocking the bot
-    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
+    # Check if the URL is an Instagram media URL
+    if 'instagram.com' in url:
+        # Download and send the media
+        download_instagram_media(url, username, password)
+    # Check if the URL is a Twitter media URL
+    elif 'twitter.com' in url or 'x.com' in url:
+        # Download and send the media
+        download_twitter_media(url, username, password)
+    # Check if the URL is a Facebook media URL
+    elif 'facebook.com' in url:
+        # Download and send the media
+        download_facebook_media(url, username, password)
+    # Check if the URL is a YouTube media URL
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        # Download and send the media
+        download_and_send(message, url, username, password)
+    else:
+        # Download and send the media
+        download_and_send(message, url, username, password)
 
 # Flask app setup
 app = Flask(__name__)
