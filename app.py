@@ -22,13 +22,13 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging setup
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG for detailed logging
 
 # Function to check the user status in the channel
 def check_user_status(user_id):
     try:
         member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        logging.info(f"User status: {member.status}")
+        logging.debug(f"User status: {member.status}")  # Log user status for debugging
         if member.status in ['administrator', 'creator']:
             return 'admin'
         elif member.status == 'member':
