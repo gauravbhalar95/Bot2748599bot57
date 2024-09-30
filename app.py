@@ -16,7 +16,7 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'
+cookies_file = 'cookies.txt'  # YouTube cookies file
 
 # Create the downloads directory if it does not exist
 if not os.path.exists(output_dir):
@@ -28,23 +28,6 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Function to check the user status in the channel
-def check_user_status(user_id):
-    try:
-        member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        logging.debug(f"User status: {member.status}")
-        if member.status in ['administrator', 'creator']:
-            return 'admin'
-        elif member.status == 'member':
-            return 'member'
-        elif member.status == 'kicked':
-            return 'banned'
-        else:
-            return 'not_member'
-    except Exception as e:
-        logging.error(f"Error checking user status: {e}")
-        return 'error'
-
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
@@ -52,8 +35,10 @@ def sanitize_filename(filename, max_length=200):
     return filename.strip()[:max_length]
 
 # Function to download media
-def download_media(url):
+def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
+    
+    # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
@@ -65,16 +50,15 @@ def download_media(url):
         'socket_timeout': 15,
     }
 
+    # Instagram login
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
+
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
-        if '/stories/' in url:
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
-        elif '/reel/' in url or '/p/' in url or '/tv/' in url:
-            ydl_opts['format'] = 'best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
-    elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.debug("Processing Twitter/Threads/X URL")
+    elif 'twitter.com' in url or 'x.com' in url:
+        logging.debug("Processing Twitter/X URL")
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.debug("Processing YouTube URL")
     elif 'facebook.com' in url:
@@ -98,13 +82,13 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it asynchronously with progress
-def download_and_send(message, url):
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url)
+            future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
             with open(file_path, 'rb') as media:
@@ -121,42 +105,23 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to run tasks after admin verification
-def run_task(message):
-    try:
-        url = message.text
-        user_id = message.from_user.id
-        status = check_user_status(user_id)
-
-        if status == 'admin':
-            bot2.reply_to(message, "Admin verification successful. Starting download...")
-            download_and_send(message, url)
-        elif status == 'member':
-            bot2.reply_to(message, "Hello Member! You cannot start this task. Please contact an admin.")
-        elif status == 'banned':
-            bot2.reply_to(message, "You are banned from the channel.")
-        elif status == 'not_member':
-            bot2.reply_to(message, f"Please join the channel first: {CHANNEL_ID}")
-        else:
-            bot2.reply_to(message, "There was an error checking your status. Please try again later.")
-    except Exception as e:
-        bot2.reply_to(message, f"Failed to run task. Error: {str(e)}")
-        logging.error(f"Task execution failed: {e}")
-
-# Flask app setup
-app = Flask(__name__)
-
-# Bot 2 commands and handlers
-@bot2.message_handler(commands=['start'])
-def send_welcome_bot2(message):
-    bot2.reply_to(message, "Welcome! Paste the link of the content you want to download.")
-
-# Handle media links
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
+
+    # Extract Instagram credentials if provided in the message
+    username = None
+    password = None
+    if "@" in url:  # Example: url containing "username:password"
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
+
     # Start a new thread for the task to avoid blocking the bot
-    threading.Thread(target=run_task, args=(message,)).start()
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
+
+# Flask app setup
+app = Flask(__name__)
 
 # Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
