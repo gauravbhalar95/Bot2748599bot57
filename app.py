@@ -38,9 +38,9 @@ def sanitize_filename(filename, max_length=200):
     filename = filename.strip()[:max_length]
     return filename
 
-# Function to download media from various platforms
-def download_media(url):
-    logging.info(f"Attempting to download media from URL: {url}")
+# Function to download all media from various platforms
+def download_all_media(url):
+    logging.info(f"Attempting to download all media from URL: {url}")
 
     ydl_opts = {
         'format': 'best',
@@ -49,8 +49,10 @@ def download_media(url):
         'nocheckcertificate': True,
     }
 
+    media_files = []
+
     if 'instagram.com' in url:
-        logging.info("Processing Instagram URL")
+        logging.info("Processing Instagram URL for all media")
         ydl_opts['username'] = INSTAGRAM_USERNAME
         ydl_opts['password'] = INSTAGRAM_PASSWORD
         ydl_opts['cookiefile'] = cookies_file
@@ -58,26 +60,22 @@ def download_media(url):
 
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
         elif '/reel/' in url or '/p/' in url or '/tv/' in url:
             ydl_opts['format'] = 'best'
-            ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
 
     elif 'twitter.com' in url:
-        logging.info("Processing Twitter URL")
+        logging.info("Processing Twitter URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
         ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
         ydl_opts['merge_output_format'] = 'mp4'
-        ydl_opts['outtmpl'] = f'{output_dir}twitter_%(id)s.%(ext)s'
 
     elif 'facebook.com' in url:
-        logging.info("Processing Facebook URL")
+        logging.info("Processing Facebook URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
         ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-        ydl_opts['outtmpl'] = f'{output_dir}facebook_%(title)s.%(ext)s'
 
     elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.info("Processing YouTube URL")
+        logging.info("Processing YouTube URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
         ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
 
@@ -88,8 +86,10 @@ def download_media(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-        return file_path
+            for entry in info_dict.get('entries', [info_dict]):
+                file_path = ydl.prepare_filename(entry)
+                media_files.append(file_path)
+        return media_files
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
