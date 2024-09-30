@@ -40,7 +40,7 @@ def download_media(url, username=None, password=None):
 
     # Set up options for yt-dlp
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'format': 'bestvideo+bestaudio/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -147,4 +147,4 @@ def webhook():
 
 if __name__ == "__main__":
     # Run the Flask app in debug mode
-    app.run(host='0.0.0.0', port=80, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)
