@@ -15,7 +15,6 @@ KOYEB_URL = os.getenv("KOYEB_URL")  # Koyeb deployment URL
 INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')  # Your Instagram username
 INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')  # Your Instagram password
 
-
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2)
 
@@ -47,6 +46,11 @@ def download_all_media(url):
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'socket_timeout': 30,
         'nocheckcertificate': True,
+        'cookiesfrombrowser': ('chrome',),  # Use browser cookies for Instagram
+        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
     }
 
     media_files = []
@@ -56,8 +60,6 @@ def download_all_media(url):
         ydl_opts['username'] = INSTAGRAM_USERNAME
         ydl_opts['password'] = INSTAGRAM_PASSWORD
         ydl_opts['cookiefile'] = cookies_file
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
         elif '/reel/' in url or '/p/' in url or '/tv/' in url:
@@ -66,18 +68,14 @@ def download_all_media(url):
     elif 'twitter.com' in url:
         logging.info("Processing Twitter URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-        ydl_opts['merge_output_format'] = 'mp4'
 
     elif 'facebook.com' in url:
         logging.info("Processing Facebook URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
 
     elif 'youtube.com' in url or 'youtu.be' in url:
         logging.info("Processing YouTube URL for all media")
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
 
     else:
         logging.error(f"Unsupported URL: {url}")
@@ -90,11 +88,12 @@ def download_all_media(url):
                 file_path = ydl.prepare_filename(entry)
                 media_files.append(file_path)
         return media_files
+    except KeyError as e:
+        logging.error(f"KeyError encountered: {str(e)}")
+        raise Exception(f"Failed due to missing key: {str(e)}. Ensure you are using the latest yt-dlp version.")
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
-
-
 
 # Function to download media and send it asynchronously
 def download_and_send(message, url):
@@ -102,49 +101,29 @@ def download_and_send(message, url):
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=5) as executor:  # Adjusted for performance
-            future = executor.submit(download_media, url)
-            file_path = future.result()
+            future = executor.submit(download_all_media, url)
+            media_files = future.result()
 
-            with open(file_path, 'rb') as media:
-                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                    bot2.send_video(message.chat.id, media)
-                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    bot2.send_photo(message.chat.id, media)
-                else:
-                    bot2.send_document(message.chat.id, media)
+            for file_path in media_files:
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
+                        bot2.send_video(message.chat.id, media)
+                    elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
-            os.remove(file_path)
+                os.remove(file_path)
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to download all media and send it asynchronously
-def download_and_send_all(message, url):
-    try:
-        bot2.reply_to(message, "Downloading all media, this may take some time...")
-        media_files = download_all_media(url)
-
-        for file_path in media_files:
-            with open(file_path, 'rb') as media:
-                if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
-                    bot2.send_video(message.chat.id, media)
-                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    bot2.send_photo(message.chat.id, media)
-                else:
-                    bot2.send_document(message.chat.id, media)
-
-            os.remove(file_path)
-
-    except Exception as e:
-        bot2.reply_to(message, f"Failed to download all media. Error: {str(e)}")
-        logging.error(f"Download all media failed: {e}")
-
 # Function to handle links and download media automatically
 def handle_links(message):
     url = message.text
     if any(keyword in url for keyword in ['instagram.com', 'twitter.com', 'youtube.com', 'facebook.com']):
-        download_and_send_all(message, url)  # Download all media automatically
+        download_and_send(message, url)  # Download all media automatically
     else:
         bot2.reply_to(message, "Unsupported URL. Please send a valid media link.")
 
