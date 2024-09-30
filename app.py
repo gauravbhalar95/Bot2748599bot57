@@ -10,8 +10,9 @@ from concurrent.futures import ThreadPoolExecutor
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
-# Initialize the bot
-bot2 = telebot.TeleBot(API_TOKEN_2)
+# Initialize the bot with debug mode enabled
+bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
+telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
@@ -21,8 +22,8 @@ cookies_file = 'cookies.txt'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
@@ -31,7 +32,7 @@ os.system('yt-dlp -U')
 def check_user_status(user_id):
     try:
         member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        logging.info(f"User status: {member.status}")
+        logging.debug(f"User status: {member.status}")
         if member.status in ['administrator', 'creator']:
             return 'admin'
         elif member.status == 'member':
@@ -52,7 +53,7 @@ def sanitize_filename(filename, max_length=200):
 
 # Function to download media
 def download_media(url):
-    logging.info(f"Attempting to download media from URL: {url}")
+    logging.debug(f"Attempting to download media from URL: {url}")
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
@@ -65,7 +66,7 @@ def download_media(url):
     }
 
     if 'instagram.com' in url:
-        logging.info("Processing Instagram URL")
+        logging.debug("Processing Instagram URL")
         if '/stories/' in url:
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
             ydl_opts['outtmpl'] = f'{output_dir}%(uploader)s_story.%(ext)s'
@@ -73,11 +74,11 @@ def download_media(url):
             ydl_opts['format'] = 'best'
             ydl_opts['outtmpl'] = f'{output_dir}%(title)s.%(ext)s'
     elif 'twitter.com' in url or 'x.com' in url or 'threads.com' in url:
-        logging.info("Processing Twitter/Threads/X URL")
+        logging.debug("Processing Twitter/Threads/X URL")
     elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.info("Processing YouTube URL")
+        logging.debug("Processing YouTube URL")
     elif 'facebook.com' in url:
-        logging.info("Processing Facebook URL")
+        logging.debug("Processing Facebook URL")
     else:
         logging.error(f"Unsupported URL: {url}")
         raise Exception("Unsupported URL!")
@@ -170,5 +171,5 @@ def webhook():
     return "Webhook set", 200
 
 if __name__ == "__main__":
-    # Run the Flask app
-    app.run(host='0.0.0.0', port=80)
+    # Run the Flask app in debug mode
+    app.run(host='0.0.0.0', port=80, debug=True)
