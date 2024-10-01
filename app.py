@@ -47,7 +47,7 @@ def download_media(url, username=None, password=None):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'socket_timeout': 60,
+        'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
     }
 
