@@ -34,8 +34,8 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to download media
-def download_media(url, username=None, password=None):
+# Function to download media with file size checking
+def download_media(url, username=None, password=None, max_file_size=300 * 1024 * 1024):  # 200MB limit
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
@@ -56,23 +56,19 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Add specific logging for URL types
-    if 'instagram.com' in url:
-        logging.debug("Processing Instagram URL")
-    elif 'twitter.com' in url or 'x.com' in url:
-        logging.debug("Processing Twitter/X URL")
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.debug("Processing YouTube URL")
-    elif 'facebook.com' in url:
-        logging.debug("Processing Facebook URL")
-    else:
-        logging.error(f"Unsupported URL: {url}")
-        raise Exception("Unsupported URL!")
-
     try:
-        # Attempt the download
+        # Step 1: Check file size before downloading
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+            info_dict = ydl.extract_info(url, download=False)  # Get video info without downloading
+            file_size = info_dict.get('filesize', 0)  # Get the file size in bytes
+            
+            # Check if file size exceeds the limit
+            if file_size and file_size > max_file_size:
+                raise Exception(f"Video too large: {file_size / (1024 * 1024):.2f} MB. Max allowed size is 200MB.")
+
+        # Step 2: Download the video if file size is acceptable
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)  # Download the video
             file_path = ydl.prepare_filename(info_dict)
 
         # Confirm if the file exists after download
@@ -101,6 +97,7 @@ def download_and_send(message, url, username=None, password=None):
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
+            # Open the file and send the appropriate type (video, photo, or document)
             with open(file_path, 'rb') as media:
                 if file_path.lower().endswith(('.mp4', '.mkv', '.webm')):
                     bot2.send_video(message.chat.id, media)
@@ -109,13 +106,14 @@ def download_and_send(message, url, username=None, password=None):
                 else:
                     bot2.send_document(message.chat.id, media)
 
+            # Clean up by removing the file after sending
             os.remove(file_path)
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
+# Function to handle messages with links
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
@@ -147,4 +145,4 @@ def webhook():
 
 if __name__ == "__main__":
     # Run the Flask app in debug mode
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=True)
