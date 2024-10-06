@@ -35,7 +35,7 @@ def sanitize_filename(filename, max_length=200):
     return filename.strip()[:max_length]
 
 # Function to download media with file size checking
-def download_media(url, username=None, password=None, max_file_size=300 * 1024 * 1024):  # 200MB limit
+def download_media(url, username=None, password=None, max_file_size=200 * 1024 * 1024):  # 200MB limit
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
