@@ -4,7 +4,7 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-from concurrent.futures import ThreadPoolExecutor
+import re  # For regex to detect URLs from multiple platforms
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 
@@ -41,8 +41,8 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to download media
-def download_media(url, username=None, password=None):
+# Function to download media from any social media platform
+def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
@@ -60,7 +60,6 @@ def download_media(url, username=None, password=None):
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
     }
 
-    # Handle Instagram, Twitter, YouTube, etc.
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -71,49 +70,38 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to convert video to audio
-def convert_to_audio(file_path):
-    try:
-        audio_file = file_path.rsplit('.', 1)[0] + ".mp3"  # Create an MP3 filename
-        os.system(f'ffmpeg -i "{file_path}" "{audio_file}"')
-        return audio_file
-    except Exception as e:
-        logging.error(f"Audio conversion error: {e}")
-        raise
+# Function to detect URLs from multiple platforms
+def detect_social_media_url(text):
+    # Regex for multiple platforms: Instagram, Twitter, Facebook, YouTube
+    social_media_regex = (
+        r'(https?://(www\.)?instagram\.com/[^\s]+|'  # Instagram
+        r'https?://(www\.)?twitter\.com/[^\s]+|'     # Twitter
+        r'https?://(www\.)?facebook\.com/[^\s]+|'    # Facebook
+        r'https?://(www\.)?youtube\.com/[^\s]+|'     # YouTube
+        r'https?://youtu\.be/[^\s]+)'               # YouTube shortened
+    )
+    match = re.search(social_media_regex, text)
+    if match:
+        return match.group(0)
+    return None
 
-# Function to upload file to Google Drive
-def upload_to_google_drive(file_path):
+# Function to download and send media (images/videos)
+def download_and_send_media(message, url):
     try:
-        file_drive = drive.CreateFile({'title': os.path.basename(file_path)})
-        file_drive.SetContentFile(file_path)
-        file_drive.Upload()
-        logging.info(f"File uploaded: {file_path}")
-        return file_drive['alternateLink']
-    except Exception as e:
-        logging.error(f"Google Drive upload error: {e}")
-        raise
-
-# Function to download and send the audio
-def download_audio_and_send(message, url):
-    try:
-        bot2.reply_to(message, "Downloading and converting to audio...")
+        bot2.reply_to(message, "Downloading media...")
         file_path = download_media(url)
-
-        # Convert to audio
-        audio_file = convert_to_audio(file_path)
-
-        # Send audio file
-        with open(audio_file, 'rb') as audio:
-            bot2.send_audio(message.chat.id, audio)
+        
+        # Send the media file (image/video)
+        with open(file_path, 'rb') as media:
+            bot2.send_document(message.chat.id, media)
 
         # Clean up
         os.remove(file_path)
-        os.remove(audio_file)
-
+    
     except Exception as e:
-        bot2.reply_to(message, f"Failed to download and convert to audio. Error: {e}")
+        bot2.reply_to(message, f"Failed to download media. Error: {e}")
 
-# Function to download and upload to Google Drive
+# Function to download and upload media to Google Drive
 def download_and_upload_drive(message, url):
     try:
         bot2.reply_to(message, "Downloading and uploading to Google Drive...")
@@ -129,17 +117,19 @@ def download_and_upload_drive(message, url):
     except Exception as e:
         bot2.reply_to(message, f"Failed to upload to Google Drive. Error: {e}")
 
-# Command handler for /audio
-@bot2.message_handler(commands=['audio'])
-def handle_audio(message):
-    url = message.text.split()[1]  # Expecting URL after /audio command
-    threading.Thread(target=download_audio_and_send, args=(message, url)).start()
-
 # Command handler for /drive
 @bot2.message_handler(commands=['drive'])
 def handle_drive(message):
     url = message.text.split()[1]  # Expecting URL after /drive command
     threading.Thread(target=download_and_upload_drive, args=(message, url)).start()
+
+# Handler for any incoming messages
+@bot2.message_handler(func=lambda message: True)
+def handle_message(message):
+    # Check if the message contains a social media URL
+    social_media_url = detect_social_media_url(message.text)
+    if social_media_url:
+        threading.Thread(target=download_and_send_media, args=(message, social_media_url)).start()
 
 # Flask app setup
 app = Flask(__name__)
