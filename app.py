@@ -5,7 +5,6 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
-import sqlite3
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -35,30 +34,26 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to log downloads in SQLite database
-def log_download(user_id, file_path):
-    conn = sqlite3.connect('downloads.db')
-    cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS downloads (user_id TEXT, file_path TEXT)')
-    cursor.execute('INSERT INTO downloads (user_id, file_path) VALUES (?, ?)', (user_id, file_path))
-    conn.commit()
-    conn.close()
-
 # Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'format': 'bestvideo+bestaudio/best',  # Download the best video and audio available
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'merge_output_format': 'mp4',  # Merge audio and video into mp4 format
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
+            'preferedformat': 'mp4',
+            'options': {'-movflags': 'faststart'},
         }],
+        'ffmpeg_location': '/bin/ffmpeg',  # Specify the path to ffmpeg
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
+        'max_filesize': 2 * 1024 * 1024 * 1024,  # Set max file size to 2 GB (in bytes)
     }
 
     # Instagram login, if credentials are provided
@@ -96,9 +91,6 @@ def download_media(url, username=None, password=None):
                 logging.error(f"Downloaded file not found at path: {file_path}")
                 raise Exception("Download failed: File not found after download.")
 
-        # Log the download in the database
-        log_download(info_dict.get('uploader_id', 'unknown'), file_path)
-
         return file_path
 
     except Exception as e:
@@ -109,8 +101,7 @@ def download_media(url, username=None, password=None):
 def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
-        
-        # Start the download in a separate thread
+
         with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
@@ -138,16 +129,17 @@ def download_and_send(message, url, username=None, password=None):
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    urls = message.text.splitlines()  # Split on new lines for multiple URLs
-    for url in urls:
-        username = None
-        password = None
-        if "@" in url:  # Example: url containing "username:password"
-            username, password = url.split('@', 1)  # Assuming format: username:password@url
-            url = password  # Change url to actual URL
+    url = message.text
 
-        # Start a new thread for the task to avoid blocking the bot
-        threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
+    # Extract Instagram credentials if provided in the message
+    username = None
+    password = None
+    if "@" in url:  # Example: url containing "username:password"
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
+
+    # Start a new thread for the task to avoid blocking the bot
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
