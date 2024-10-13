@@ -5,6 +5,8 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -34,15 +36,30 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
+# Set up Google Drive authentication
+gauth = GoogleAuth()
+drive = GoogleDrive(gauth)
+
+# Function to upload to Google Drive
+def upload_to_google_drive(file_path):
+    try:
+        file_drive = drive.CreateFile({'title': os.path.basename(file_path)})
+        file_drive.SetContentFile(file_path)
+        file_drive.Upload()
+        return file_drive['id']
+    except Exception as e:
+        logging.error(f"Google Drive upload failed: {e}")
+        raise
+
 # Function to download media
-def download_media(url, username=None, password=None):
+def download_media(url, username=None, password=None, format_choice='mp4', convert_audio=False):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',  # Download the best video and audio available
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
-        'merge_output_format': 'mp4',  # Merge audio and video into mp4 format
+        'merge_output_format': format_choice,  # Merge audio and video into chosen format
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
@@ -55,6 +72,14 @@ def download_media(url, username=None, password=None):
         'retries': 5,  # Retry on download errors
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Set max file size to 2 GB (in bytes)
     }
+
+    # Convert video to audio if requested
+    if convert_audio:
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
 
     # Instagram login, if credentials are provided
     if username and password:
@@ -98,19 +123,22 @@ def download_media(url, username=None, password=None):
         raise
 
 # Function to download media and send it asynchronously
-def download_and_send(message, url, username=None, password=None):
+def download_and_send(message, url, username=None, password=None, format_choice='mp4', convert_audio=False):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password)
+            future = executor.submit(download_media, url, username, password, format_choice, convert_audio)
             file_path = future.result()
 
             # Check if the downloaded file is already an MP4
-            if file_path.lower().endswith('.mp4'):
+            if file_path.lower().endswith('.mp4') and not convert_audio:
                 # Directly send the video file
                 with open(file_path, 'rb') as media:
                     bot2.send_video(message.chat.id, media)
+            elif convert_audio:
+                with open(file_path, 'rb') as media:
+                    bot2.send_audio(message.chat.id, media)
             else:
                 # Handle other formats (photo or document)
                 with open(file_path, 'rb') as media:
