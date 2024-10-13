@@ -6,4 +6,7 @@ python-telegram-bot
 yt-dlp==2024.09.27
 beautifulsoup4
 moviepy
-
+pydrive
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
