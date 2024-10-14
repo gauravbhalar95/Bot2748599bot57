@@ -4,7 +4,7 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re  # For regex to detect URLs from multiple platforms
+from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -16,7 +16,7 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # Your cookies file
+cookies_file = 'cookies.txt'  # YouTube cookies file
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
@@ -28,134 +28,118 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# List to store download history
-download_history = []
-
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
+    import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Progress hook to track download progress
-def progress_hook(d):
-    if d['status'] == 'downloading':
-        percent = d.get('_percent_str', '0%').strip()
-        eta = d.get('eta', 'N/A')
-        speed = d.get('_speed_str', '0 KB/s').strip()
-        logging.info(f"Downloading: {percent} complete at {speed}, ETA: {eta}s")
-        bot2.send_message(CHANNEL_ID, f"Downloading: {percent} complete at {speed}, ETA: {eta}s")
-
-# Function to download media from any social media platform
-def download_media(url):
+# Function to download media
+def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Setup yt-dlp options with cookies and FFmpeg binary location
+    # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
-        'socket_timeout': 10,
-        'retries': 5,
-        'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
-        'quiet': True,  # Suppress unnecessary output
-        'progress_hooks': [progress_hook],  # Add progress hook here
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
         }],
-        'ffmpeg_location': '/bin/FFmpeg',  # Update this to your FFmpeg binary path
+        'socket_timeout': 10,
+        'retries': 5,  # Retry on download errors
     }
 
+    # Instagram login, if credentials are provided
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
+
+    # Add specific logging for URL types
+    if 'instagram.com' in url:
+        logging.debug("Processing Instagram URL")
+    elif 'twitter.com' in url or 'x.com' in url:
+        logging.debug("Processing Twitter/X URL")
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.debug("Processing YouTube URL")
+    elif 'facebook.com' in url:
+        logging.debug("Processing Facebook URL")
+    else:
+        logging.error(f"Unsupported URL: {url}")
+        raise Exception("Unsupported URL!")
+
     try:
+        # Attempt the download
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
 
-            # Log the extracted info_dict to debug
-            logging.debug(f"Extracted info_dict: {info_dict}")
-
-            if 'title' in info_dict and info_dict['title'] is not None:
-                file_path = ydl.prepare_filename(info_dict)
-                return file_path
+        # Confirm if the file exists after download
+        if not os.path.exists(file_path):
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                # If the .part file exists, rename it to the final file
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
             else:
-                logging.error("No title found in the extracted info_dict.")
-                raise Exception("Failed to download media: No title found.")
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
+
+        return file_path
 
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to track downloads in history
-def track_download(file_path):
-    if file_path:
-        download_history.append(file_path)
-
-# Function to detect URLs from multiple platforms
-def detect_social_media_url(text):
-    # Regex for multiple platforms: Instagram, Twitter, Facebook, YouTube
-    social_media_regex = (
-        r'(https?://(www\.)?instagram\.com/[^\s]+|'  # Instagram
-        r'https?://(www\.)?twitter\.com/[^\s]+|'     # Twitter
-        r'https?://(www\.)?facebook\.com/[^\s]+|'    # Facebook
-        r'https?://(www\.)?youtube\.com/[^\s]+|'     # YouTube
-        r'https?://youtu\.be/[^\s]+)'                # YouTube shortened
-    )
-    match = re.search(social_media_regex, text)
-    if match:
-        return match.group(0)
-    return None
-
-# Function to download and send media (images/videos)
-def download_and_send_media(message, url):
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None):
     try:
-        bot2.reply_to(message, "Downloading media...")
-        file_path = download_media(url)
+        bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        # Track download in history
-        track_download(file_path)
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future = executor.submit(download_media, url, username, password)
+            file_path = future.result()
 
-        # Send the media file (image/video)
-        with open(file_path, 'rb') as media:
-            bot2.send_document(message.chat.id, media)
+            # Check if the downloaded file is already an MP4
+            if file_path.lower().endswith('.mp4'):
+                # Directly send the video file
+                with open(file_path, 'rb') as media:
+                    bot2.send_video(message.chat.id, media)
+            else:
+                # Handle other formats (photo or document)
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
-        # Clean up
-        os.remove(file_path)
+            # Clean up by removing the file after sending
+            os.remove(file_path)
 
     except Exception as e:
-        bot2.reply_to(message, f"Failed to download media. Error: {e}")
+        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+        logging.error(f"Download failed: {e}")
 
-# Command to show download history
-@bot2.message_handler(commands=['history'])
-def handle_history(message):
-    if not download_history:
-        bot2.reply_to(message, "No downloads have been made yet.")
-    else:
-        history_text = "\n".join([f"{i+1}. {os.path.basename(file)}" for i, file in enumerate(download_history)])
-        bot2.reply_to(message, f"Download history:\n{history_text}")
-
-# Command to show help information
-@bot2.message_handler(commands=['help'])
-def handle_help(message):
-    help_text = """
-    <b>Welcome to the Media Downloader Bot!</b>
-    
-    Here are the commands you can use:
-    - /supported: List supported platforms.
-    - /history: Show recent download history.
-    
-    Just send a URL from Instagram, YouTube, Twitter, or Facebook, and I'll download the media for you!
-    """
-    bot2.reply_to(message, help_text)
-
-# Handler for any incoming messages
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
-def handle_message(message):
-    # Check if the message contains a social media URL
-    social_media_url = detect_social_media_url(message.text)
-    if social_media_url:
-        threading.Thread(target=download_and_send_media, args=(message, social_media_url)).start()
+def handle_links(message):
+    url = message.text
+
+    # Extract Instagram credentials if provided in the message
+    username = None
+    password = None
+    if "@" in url:  # Example: url containing "username:password"
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
+
+    # Start a new thread for the task to avoid blocking the bot
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
@@ -168,4 +152,5 @@ def webhook():
     return "Webhook set", 200
 
 if __name__ == "__main__":
+    # Run the Flask app in debug mode
     app.run(host='0.0.0.0', port=8080, debug=True)
