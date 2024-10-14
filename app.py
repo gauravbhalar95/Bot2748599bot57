@@ -50,19 +50,24 @@ def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Setup yt-dlp options with cookies
+    # Function to download media from any social media platform
+def download_media(url):
+    logging.debug(f"Attempting to download media from URL: {url}")
+
+    # Setup yt-dlp options with cookies
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferredformat': 'mp4',
-        }],
         'socket_timeout': 10,
-        'retries': 5, 
+        'retries': 5,
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
         'quiet': True,  # Suppress unnecessary output
         'progress_hooks': [progress_hook],  # Add progress hook here
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            # Remove 'preferredformat' parameter
+        }],
     }
 
     try:
