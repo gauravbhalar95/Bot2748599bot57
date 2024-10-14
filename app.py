@@ -1,7 +1,6 @@
 import os
 import logging
 import threading
-import time
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -40,17 +39,13 @@ def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
-    def download_media(url, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url}")
-
-    # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Use os.path.join for file paths
+        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
+            'preferredformat': 'mp4',
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
@@ -82,20 +77,27 @@ def download_media(url, username=None, password=None):
 
         # Confirm if the file exists after download
         if not os.path.exists(file_path):
-            logging.error(f"Downloaded file not found at path: {file_path}")
-            raise Exception("Download failed: File not found after download.")
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                # If the .part file exists, rename it to the final file
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+            else:
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
 
         return file_path
 
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
+
 # Function to download media and send it asynchronously
 def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=1) as executor:  # Limit to one concurrent request
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
@@ -114,17 +116,6 @@ def download_and_send(message, url, username=None, password=None):
 
             # Clean up by removing the file after sending
             os.remove(file_path)
-
-    except telebot.apihelper.ApiException as e:
-        # Handle Telegram API exceptions
-        if e.error_code == 429:  # Too Many Requests
-            wait_time = int(e.description.split(" ")[-1]) + 1  # Extract wait time from error message
-            logging.warning(f"Rate limit reached, waiting for {wait_time} seconds.")
-            time.sleep(wait_time)
-            download_and_send(message, url, username, password)  # Retry the download and send
-        else:
-            bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
-            logging.error(f"Download failed: {e}")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
