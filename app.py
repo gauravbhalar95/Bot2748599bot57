@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import time
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -56,19 +57,6 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Add specific logging for URL types
-    if 'instagram.com' in url:
-        logging.debug("Processing Instagram URL")
-    elif 'twitter.com' in url or 'x.com' in url:
-        logging.debug("Processing Twitter/X URL")
-    elif 'youtube.com' in url or 'youtu.be' in url:
-        logging.debug("Processing YouTube URL")
-    elif 'facebook.com' in url:
-        logging.debug("Processing Facebook URL")
-    else:
-        logging.error(f"Unsupported URL: {url}")
-        raise Exception("Unsupported URL!")
-
     try:
         # Attempt the download
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -97,7 +85,7 @@ def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=1) as executor:  # Limit to one concurrent request
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
@@ -116,6 +104,17 @@ def download_and_send(message, url, username=None, password=None):
 
             # Clean up by removing the file after sending
             os.remove(file_path)
+
+    except telebot.apihelper.ApiException as e:
+        # Handle Telegram API exceptions
+        if e.error_code == 429:  # Too Many Requests
+            wait_time = int(e.description.split(" ")[-1]) + 1  # Extract wait time from error message
+            logging.warning(f"Rate limit reached, waiting for {wait_time} seconds.")
+            time.sleep(wait_time)
+            download_and_send(message, url, username, password)  # Retry the download and send
+        else:
+            bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+            logging.error(f"Download failed: {e}")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
