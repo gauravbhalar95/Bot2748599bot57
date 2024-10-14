@@ -4,6 +4,7 @@ import asyncio
 from flask import Flask, request
 import telebot
 import yt_dlp
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
@@ -27,7 +28,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
-    import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
@@ -41,7 +41,7 @@ async def download_media(url, username=None, password=None):
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',  # Assuming yt-dlp still supports this postprocessor
+            'key': 'FFmpegVideoConvertor',  # Postprocessor to convert video formats
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
@@ -72,6 +72,11 @@ async def download_media(url, username=None, password=None):
 
         # Prepare the file path after downloading
         info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
+        if info_dict is None:
+            logging.error("Failed to extract information from the URL.")
+            raise Exception("Download failed: Unable to extract information.")
+
+        # Prepare the filename
         file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
 
         # Ensure that file_path is valid
