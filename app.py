@@ -55,17 +55,15 @@ def download_media(url):
 
     # Setup yt-dlp options with cookies or login credentials
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'merge_output_format': 'mp4',
-        'cookiefile': cookies_file,  # Ensure this file is updated
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'ffmpeg_location': '/bin/ffmpeg',
         'socket_timeout': 10,
-        'retries': 5,
+        'retries': 5, 
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
         'username': instagram_username,
         'password': instagram_password,
