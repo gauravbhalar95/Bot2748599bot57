@@ -5,6 +5,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
+import threading  # Ensure to import threading
 from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
@@ -68,7 +69,7 @@ async def download_media(url, username=None, password=None):
     try:
         # Attempt the download
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, yt_dlp.YoutubeDL(ydl_opts).download, [url])
+        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([url]))
 
         # Prepare the file path after downloading
         info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
