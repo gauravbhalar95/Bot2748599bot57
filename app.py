@@ -62,7 +62,7 @@ def download_media(url):
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
         }],
-        'ffmpeg_location': 'path/to/your/ffmpeg/bin',  # Update this to your FFmpeg binary path
+        'ffmpeg_location': '/bin/FFmpeg',  # Update this to your FFmpeg binary path
     }
 
     try:
