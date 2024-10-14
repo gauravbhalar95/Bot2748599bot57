@@ -1,12 +1,11 @@
 import os
 import logging
 import asyncio
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import threading  # Ensure to import threading
-from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -35,8 +34,7 @@ def sanitize_filename(filename, max_length=200):
 # Asynchronous function to download media
 async def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
-
-    # Set up options for yt-dlp
+    
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
@@ -44,11 +42,10 @@ async def download_media(url, username=None, password=None):
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',  # Postprocessor to convert video formats
         }],
-        'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
+        'socket_timeout': 20,  # Increase socket timeout
+        'retries': 10,  # Increase retries on download errors
     }
 
-    # Instagram login, if credentials are provided
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
@@ -68,20 +65,14 @@ async def download_media(url, username=None, password=None):
 
     try:
         # Attempt the download
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([url]))
-
-        # Prepare the file path after downloading
+        await asyncio.get_event_loop().run_in_executor(None, yt_dlp.YoutubeDL(ydl_opts).download, [url])
+        
+        # Extract info for the downloaded file
         info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
-        if info_dict is None:
-            logging.error("Failed to extract information from the URL.")
-            raise Exception("Download failed: Unable to extract information.")
-
-        # Prepare the filename
         file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
 
-        # Ensure that file_path is valid
-        if file_path is None or not os.path.exists(file_path):
+        # Ensure that the downloaded file exists
+        if not os.path.exists(file_path):
             logging.error(f"Downloaded file not found at path: {file_path}")
             raise Exception("Download failed: File not found after download.")
 
@@ -95,7 +86,7 @@ async def download_media(url, username=None, password=None):
 async def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
-
+        
         file_path = await download_media(url, username, password)
 
         # Determine the media type and send accordingly
