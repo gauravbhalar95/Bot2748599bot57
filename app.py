@@ -45,8 +45,12 @@ def sanitize_filename(filename, max_length=200):
 def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
+    # Fetch Instagram credentials from environment variables
+    instagram_username = os.getenv('USERNAME')
+    instagram_password = os.getenv('PASSWORD')
+
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',  # Download best video and audio
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
         'cookiefile': cookies_file,
@@ -58,6 +62,8 @@ def download_media(url):
         'socket_timeout': 10,
         'retries': 5,
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
+        'username': instagram_username,  # Instagram username
+        'password': instagram_password,  # Instagram password
     }
 
     try:
@@ -69,6 +75,7 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
+
 
 # Function to detect URLs from multiple platforms
 def detect_social_media_url(text):
