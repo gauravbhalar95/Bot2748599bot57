@@ -70,7 +70,6 @@ def download_media(url):
         'username': instagram_username,
         'password': instagram_password,
         'quiet': True,  # Suppress unnecessary output
-        'cookiesfrombrowser': 'chrome',  # Automatically fetch cookies from Chrome
         'progress_hooks': [progress_hook],  # Add progress hook here
     }
 
