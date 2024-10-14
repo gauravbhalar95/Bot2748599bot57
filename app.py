@@ -1,10 +1,10 @@
 import os
 import logging
 import asyncio
-import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
+from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -92,18 +92,14 @@ async def download_and_send(message, url, username=None, password=None):
 
         file_path = await download_media(url, username, password)
 
-        # Check if the downloaded file is already an MP4
-        if file_path.lower().endswith('.mp4'):
-            # Directly send the video file
-            with open(file_path, 'rb') as media:
+        # Determine the media type and send accordingly
+        with open(file_path, 'rb') as media:
+            if file_path.lower().endswith('.mp4'):
                 bot2.send_video(message.chat.id, media)
-        else:
-            # Handle other formats (photo or document)
-            with open(file_path, 'rb') as media:
-                if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    bot2.send_photo(message.chat.id, media)
-                else:
-                    bot2.send_document(message.chat.id, media)
+            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                bot2.send_photo(message.chat.id, media)
+            else:
+                bot2.send_document(message.chat.id, media)
 
         # Clean up by removing the file after sending
         os.remove(file_path)
