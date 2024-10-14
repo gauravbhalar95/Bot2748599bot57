@@ -66,15 +66,22 @@ def download_media(url):
         'progress_hooks': [progress_hook],  # Add progress hook here
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            # Remove 'preferredformat' parameter
         }],
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-        return file_path
+
+            # Log the extracted info_dict to debug
+            logging.debug(f"Extracted info_dict: {info_dict}")
+
+            if 'title' in info_dict and info_dict['title'] is not None:
+                file_path = ydl.prepare_filename(info_dict)
+                return file_path
+            else:
+                logging.error("No title found in the extracted info_dict.")
+                raise Exception("Failed to download media: No title found.")
 
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
