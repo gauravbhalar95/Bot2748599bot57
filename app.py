@@ -55,25 +55,25 @@ def download_media(url):
     instagram_password = os.getenv('PASSWORD')
 
     # Setup yt-dlp options with cookies or login credentials
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'merge_output_format': 'mp4',
-        'cookiefile': cookies_file,  # Ensure this file is updated
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }],
-        'ffmpeg_location': '/bin/ffmpeg',
-        'socket_timeout': 10,
-        'retries': 5,
-        'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
-        'username': instagram_username,
-        'password': instagram_password,
-        'quiet': True,  # Suppress unnecessary output
-        'cookiesfrombrowser': 'chrome',  # Automatically fetch cookies from Chrome
-        'progress_hooks': [progress_hook],  # Add progress hook here
-    }
+    # Removed 'cookiesfrombrowser' option
+ydl_opts = {
+    'format': 'bestvideo+bestaudio/best',
+    'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+    'merge_output_format': 'mp4',
+    'cookiefile': cookies_file,  # Use cookiefile instead
+    'postprocessors': [{
+        'key': 'FFmpegVideoConvertor',
+        'preferedformat': 'mp4',
+    }],
+    'ffmpeg_location': '/bin/ffmpeg',
+    'socket_timeout': 10,
+    'retries': 5,
+    'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
+    'username': instagram_username,
+    'password': instagram_password,
+    'quiet': True,
+    'progress_hooks': [progress_hook],
+}
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
