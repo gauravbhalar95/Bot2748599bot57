@@ -26,9 +26,6 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
-
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
@@ -45,7 +42,7 @@ async def download_media(url, username=None, password=None):
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',  # Post-process to convert videos
+            'key': 'FFmpegVideoConvertor',  # Assuming yt-dlp still supports this postprocessor
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
@@ -74,20 +71,14 @@ async def download_media(url, username=None, password=None):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, yt_dlp.YoutubeDL(ydl_opts).download, [url])
 
-        # Get the file path of the downloaded media
+        # Prepare the file path after downloading
         info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
         file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
 
         # Confirm if the file exists after download
         if not os.path.exists(file_path):
-            part_file_path = f"{file_path}.part"
-            if os.path.exists(part_file_path):
-                # If the .part file exists, rename it to the final file
-                os.rename(part_file_path, file_path)
-                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-            else:
-                logging.error(f"Downloaded file not found at path: {file_path}")
-                raise Exception("Download failed: File not found after download.")
+            logging.error(f"Downloaded file not found at path: {file_path}")
+            raise Exception("Download failed: File not found after download.")
 
         return file_path
 
