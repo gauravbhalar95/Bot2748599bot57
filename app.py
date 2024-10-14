@@ -35,11 +35,23 @@ gauth = GoogleAuth()
 gauth.LocalWebserverAuth()  # Authenticate locally (for testing)
 drive = GoogleDrive(gauth)
 
+# List to store download history
+download_history = []
+
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
+
+# Progress hook to track download progress
+def progress_hook(d):
+    if d['status'] == 'downloading':
+        percent = d.get('_percent_str', '0%').strip()
+        eta = d.get('eta', 'N/A')
+        speed = d.get('_speed_str', '0 KB/s').strip()
+        logging.info(f"Downloading: {percent} complete at {speed}, ETA: {eta}s")
+        bot2.send_message(CHANNEL_ID, f"Downloading: {percent} complete at {speed}, ETA: {eta}s")
 
 # Function to download media from any social media platform
 def download_media(url):
@@ -63,10 +75,11 @@ def download_media(url):
         'socket_timeout': 10,
         'retries': 5,
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
-        'username': instagram_username,  # Ensure credentials are set properly
+        'username': instagram_username,
         'password': instagram_password,
         'quiet': True,  # Suppress unnecessary output
         'cookiesfrombrowser': 'chrome',  # Automatically fetch cookies from Chrome
+        'progress_hooks': [progress_hook],  # Add progress hook here
     }
 
     try:
@@ -79,6 +92,10 @@ def download_media(url):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Function to track downloads in history
+def track_download(file_path):
+    if file_path:
+        download_history.append(file_path)
 
 # Function to detect URLs from multiple platforms
 def detect_social_media_url(text):
@@ -100,6 +117,9 @@ def download_and_send_media(message, url):
     try:
         bot2.reply_to(message, "Downloading media...")
         file_path = download_media(url)
+
+        # Track download in history
+        track_download(file_path)
 
         # Send the media file (image/video)
         with open(file_path, 'rb') as media:
@@ -144,6 +164,30 @@ def upload_to_google_drive(file_path):
         'role': 'reader'
     })
     return file_drive['alternateLink']
+
+# Command to show download history
+@bot2.message_handler(commands=['history'])
+def handle_history(message):
+    if not download_history:
+        bot2.reply_to(message, "No downloads have been made yet.")
+    else:
+        history_text = "\n".join([f"{i+1}. {os.path.basename(file)}" for i, file in enumerate(download_history)])
+        bot2.reply_to(message, f"Download history:\n{history_text}")
+
+# Command to show help information
+@bot2.message_handler(commands=['help'])
+def handle_help(message):
+    help_text = """
+    <b>Welcome to the Media Downloader Bot!</b>
+    
+    Here are the commands you can use:
+    - /supported: List supported platforms.
+    - /history: Show recent download history.
+    - /drive <URL>: Download media from a URL and upload to Google Drive.
+    
+    Just send a URL from Instagram, YouTube, Twitter, or Facebook, and I'll download the media for you!
+    """
+    bot2.reply_to(message, help_text)
 
 # Command handler for /drive
 @bot2.message_handler(commands=['drive'])
