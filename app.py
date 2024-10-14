@@ -40,9 +40,13 @@ def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
+    def download_media(url, username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url}")
+
+    # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Use os.path.join for file paths
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
@@ -57,6 +61,19 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
+    # Add specific logging for URL types
+    if 'instagram.com' in url:
+        logging.debug("Processing Instagram URL")
+    elif 'twitter.com' in url or 'x.com' in url:
+        logging.debug("Processing Twitter/X URL")
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        logging.debug("Processing YouTube URL")
+    elif 'facebook.com' in url:
+        logging.debug("Processing Facebook URL")
+    else:
+        logging.error(f"Unsupported URL: {url}")
+        raise Exception("Unsupported URL!")
+
     try:
         # Attempt the download
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -65,21 +82,14 @@ def download_media(url, username=None, password=None):
 
         # Confirm if the file exists after download
         if not os.path.exists(file_path):
-            part_file_path = f"{file_path}.part"
-            if os.path.exists(part_file_path):
-                # If the .part file exists, rename it to the final file
-                os.rename(part_file_path, file_path)
-                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-            else:
-                logging.error(f"Downloaded file not found at path: {file_path}")
-                raise Exception("Download failed: File not found after download.")
+            logging.error(f"Downloaded file not found at path: {file_path}")
+            raise Exception("Download failed: File not found after download.")
 
         return file_path
 
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
-
 # Function to download media and send it asynchronously
 def download_and_send(message, url, username=None, password=None):
     try:
