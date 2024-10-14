@@ -5,7 +5,6 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -75,8 +74,8 @@ async def download_media(url, username=None, password=None):
         info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
         file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
 
-        # Confirm if the file exists after download
-        if not os.path.exists(file_path):
+        # Ensure that file_path is valid
+        if file_path is None or not os.path.exists(file_path):
             logging.error(f"Downloaded file not found at path: {file_path}")
             raise Exception("Download failed: File not found after download.")
 
@@ -116,14 +115,16 @@ async def download_and_send(message, url, username=None, password=None):
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    url = message.text
+    url = message.text.strip()
 
     # Extract Instagram credentials if provided in the message
     username = None
     password = None
     if "@" in url:  # Example: url containing "username:password"
-        username, password = url.split('@', 1)  # Assuming format: username:password@url
-        url = password  # Change url to actual URL
+        parts = url.split('@', 1)
+        if len(parts) == 2:
+            username, password = parts[0], parts[1]  # Assuming format: username:password@url
+            url = password  # Change url to actual URL
 
     # Start a new thread for the task to avoid blocking the bot
     threading.Thread(target=lambda: asyncio.run(download_and_send(message, url, username, password))).start()
