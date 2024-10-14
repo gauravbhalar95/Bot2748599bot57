@@ -1,19 +1,22 @@
-# Use an official Python runtime as a parent image
+# Use the official Python image
 FROM python:3.9-slim
+
+# Install ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
 
 # Set the working directory
 WORKDIR /app
-RUN mkdir -p /app/downloads && chmod -R 777 /app/downloads
 
-
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
+# Copy the requirements file and install dependencies
+COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Make port 8080 available to the world outside this container
-EXPOSE 8080
+# Copy the application code
+COPY app.py app.py
+COPY cookies.txt cookies.txt  # Make sure you have this file in the same directory
 
-# Run app.py when the container launches
+# Ensure the output directory exists
+RUN mkdir -p /app/downloads
+
+# Set the command to run your app
 CMD ["python", "app.py"]
