@@ -49,12 +49,7 @@ def progress_hook(d):
 def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Setup yt-dlp options with cookies
-    # Function to download media from any social media platform
-def download_media(url):
-    logging.debug(f"Attempting to download media from URL: {url}")
-
-    # Setup yt-dlp options with cookies
+    # Setup yt-dlp options with cookies and FFmpeg binary location
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
@@ -67,7 +62,7 @@ def download_media(url):
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
         }],
-        'ffmpeg_location': '/bin/ffmpeg',  # Update this to your FFmpeg binary path
+        'ffmpeg_location': 'path/to/your/ffmpeg/bin',  # Update this to your FFmpeg binary path
     }
 
     try:
@@ -87,6 +82,7 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
+
 # Function to track downloads in history
 def track_download(file_path):
     if file_path:
@@ -123,14 +119,6 @@ def download_and_send_media(message, url):
         # Clean up
         os.remove(file_path)
 
-    except telebot.apihelper.ApiException as e:
-        if e.error_code == 429:
-            retry_after = int(e.description.split("retry after ")[-1])
-            logging.warning(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
-            time.sleep(retry_after + 5)  # Wait for the suggested time plus a buffer
-            download_and_send_media(message, url)  # Retry sending media
-        else:
-            bot2.reply_to(message, f"Failed to download media. Error: {e}")
     except Exception as e:
         bot2.reply_to(message, f"Failed to download media. Error: {e}")
 
