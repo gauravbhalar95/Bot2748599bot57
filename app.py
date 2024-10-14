@@ -5,8 +5,6 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re  # For regex to detect URLs from multiple platforms
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -29,11 +27,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
-
-# Google Drive authentication setup
-gauth = GoogleAuth()
-gauth.LocalWebserverAuth()  # Authenticate locally (for testing)
-drive = GoogleDrive(gauth)
 
 # List to store download history
 download_history = []
@@ -131,40 +124,6 @@ def download_and_send_media(message, url):
     except Exception as e:
         bot2.reply_to(message, f"Failed to download media. Error: {e}")
 
-# Function to download and upload media to Google Drive
-def download_and_upload_drive(message, url):
-    try:
-        bot2.reply_to(message, "Downloading and uploading to Google Drive...")
-        file_path = download_media(url)
-
-        # Upload to Google Drive
-        drive_link = upload_to_google_drive(file_path)
-        bot2.reply_to(message, f"File uploaded successfully: {drive_link}")
-
-        # Clean up
-        os.remove(file_path)
-
-    except Exception as e:
-        bot2.reply_to(message, f"Failed to upload to Google Drive. Error: {e}")
-
-# Upload file to Google Drive
-def upload_to_google_drive(file_path):
-    # Sanitize file name
-    file_name = sanitize_filename(os.path.basename(file_path))
-
-    # Create Google Drive file and upload
-    file_drive = drive.CreateFile({'title': file_name})
-    file_drive.SetContentFile(file_path)
-    file_drive.Upload()
-
-    # Return the Google Drive shareable link
-    file_drive.InsertPermission({
-        'type': 'anyone',
-        'value': 'anyone',
-        'role': 'reader'
-    })
-    return file_drive['alternateLink']
-
 # Command to show download history
 @bot2.message_handler(commands=['history'])
 def handle_history(message):
@@ -183,17 +142,10 @@ def handle_help(message):
     Here are the commands you can use:
     - /supported: List supported platforms.
     - /history: Show recent download history.
-    - /drive <URL>: Download media from a URL and upload to Google Drive.
     
     Just send a URL from Instagram, YouTube, Twitter, or Facebook, and I'll download the media for you!
     """
     bot2.reply_to(message, help_text)
-
-# Command handler for /drive
-@bot2.message_handler(commands=['drive'])
-def handle_drive(message):
-    url = message.text.split()[1]  # Expecting URL after /drive command
-    threading.Thread(target=download_and_upload_drive, args=(message, url)).start()
 
 # Handler for any incoming messages
 @bot2.message_handler(func=lambda message: True)
