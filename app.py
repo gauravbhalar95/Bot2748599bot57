@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 import threading
 from flask import Flask, request
 import telebot
@@ -34,8 +35,8 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Function to download media
-def download_media(url, username=None, password=None):
+# Asynchronous function to download media
+async def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Set up options for yt-dlp
@@ -44,8 +45,7 @@ def download_media(url, username=None, password=None):
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferredformat': 'mp4',
+            'key': 'FFmpegVideoConvertor',  # Post-process to convert videos
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
@@ -56,7 +56,7 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Add specific logging for URL types
+    # Logging the URL type
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -71,9 +71,12 @@ def download_media(url, username=None, password=None):
 
     try:
         # Attempt the download
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, yt_dlp.YoutubeDL(ydl_opts).download, [url])
+
+        # Get the file path of the downloaded media
+        info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
+        file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
 
         # Confirm if the file exists after download
         if not os.path.exists(file_path):
@@ -93,29 +96,27 @@ def download_media(url, username=None, password=None):
         raise
 
 # Function to download media and send it asynchronously
-def download_and_send(message, url, username=None, password=None):
+async def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password)
-            file_path = future.result()
+        file_path = await download_media(url, username, password)
 
-            # Check if the downloaded file is already an MP4
-            if file_path.lower().endswith('.mp4'):
-                # Directly send the video file
-                with open(file_path, 'rb') as media:
-                    bot2.send_video(message.chat.id, media)
-            else:
-                # Handle other formats (photo or document)
-                with open(file_path, 'rb') as media:
-                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
-                    else:
-                        bot2.send_document(message.chat.id, media)
+        # Check if the downloaded file is already an MP4
+        if file_path.lower().endswith('.mp4'):
+            # Directly send the video file
+            with open(file_path, 'rb') as media:
+                bot2.send_video(message.chat.id, media)
+        else:
+            # Handle other formats (photo or document)
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
 
-            # Clean up by removing the file after sending
-            os.remove(file_path)
+        # Clean up by removing the file after sending
+        os.remove(file_path)
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
@@ -134,7 +135,7 @@ def handle_links(message):
         url = password  # Change url to actual URL
 
     # Start a new thread for the task to avoid blocking the bot
-    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
+    threading.Thread(target=lambda: asyncio.run(download_and_send(message, url, username, password))).start()
 
 # Flask app setup
 app = Flask(__name__)
