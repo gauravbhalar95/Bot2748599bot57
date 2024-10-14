@@ -49,11 +49,12 @@ def download_media(url):
     instagram_username = os.getenv('USERNAME')
     instagram_password = os.getenv('PASSWORD')
 
+    # Setup yt-dlp options with cookies or login credentials
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
-        'cookiefile': cookies_file,
+        'cookiefile': cookies_file,  # Ensure this file is updated
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
@@ -62,8 +63,10 @@ def download_media(url):
         'socket_timeout': 10,
         'retries': 5,
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
-        'username': instagram_username,  # Instagram username
-        'password': instagram_password,  # Instagram password
+        'username': instagram_username,  # Ensure credentials are set properly
+        'password': instagram_password,
+        'quiet': True,  # Suppress unnecessary output
+        'cookiesfrombrowser': 'chrome',  # Automatically fetch cookies from Chrome
     }
 
     try:
@@ -97,14 +100,14 @@ def download_and_send_media(message, url):
     try:
         bot2.reply_to(message, "Downloading media...")
         file_path = download_media(url)
-        
+
         # Send the media file (image/video)
         with open(file_path, 'rb') as media:
             bot2.send_document(message.chat.id, media)
 
         # Clean up
         os.remove(file_path)
-    
+
     except Exception as e:
         bot2.reply_to(message, f"Failed to download media. Error: {e}")
 
@@ -123,6 +126,24 @@ def download_and_upload_drive(message, url):
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to upload to Google Drive. Error: {e}")
+
+# Upload file to Google Drive
+def upload_to_google_drive(file_path):
+    # Sanitize file name
+    file_name = sanitize_filename(os.path.basename(file_path))
+
+    # Create Google Drive file and upload
+    file_drive = drive.CreateFile({'title': file_name})
+    file_drive.SetContentFile(file_path)
+    file_drive.Upload()
+
+    # Return the Google Drive shareable link
+    file_drive.InsertPermission({
+        'type': 'anyone',
+        'value': 'anyone',
+        'role': 'reader'
+    })
+    return file_drive['alternateLink']
 
 # Command handler for /drive
 @bot2.message_handler(commands=['drive'])
