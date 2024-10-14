@@ -16,7 +16,7 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # YouTube cookies file
+cookies_file = 'cookies.txt'  # Your cookies file
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
@@ -49,24 +49,18 @@ def progress_hook(d):
 def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Fetch Instagram credentials from environment variables
-    instagram_username = os.getenv('USERNAME')
-    instagram_password = os.getenv('PASSWORD')
-
-    # Setup yt-dlp options with cookies or login credentials
+    # Setup yt-dlp options with cookies
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
+            'preferredformat': 'mp4',
         }],
         'socket_timeout': 10,
         'retries': 5, 
         'max_filesize': 2 * 1024 * 1024 * 1024,  # Max size 2GB
-        'username': instagram_username,
-        'password': instagram_password,
         'quiet': True,  # Suppress unnecessary output
         'progress_hooks': [progress_hook],  # Add progress hook here
     }
@@ -94,7 +88,7 @@ def detect_social_media_url(text):
         r'https?://(www\.)?twitter\.com/[^\s]+|'     # Twitter
         r'https?://(www\.)?facebook\.com/[^\s]+|'    # Facebook
         r'https?://(www\.)?youtube\.com/[^\s]+|'     # YouTube
-        r'https?://youtu\.be/[^\s]+)'               # YouTube shortened
+        r'https?://youtu\.be/[^\s]+)'                # YouTube shortened
     )
     match = re.search(social_media_regex, text)
     if match:
