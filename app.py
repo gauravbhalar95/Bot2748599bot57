@@ -50,6 +50,11 @@ def download_media(url):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     # Setup yt-dlp options with cookies
+    # Function to download media from any social media platform
+def download_media(url):
+    logging.debug(f"Attempting to download media from URL: {url}")
+
+    # Setup yt-dlp options with cookies
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
@@ -61,8 +66,8 @@ def download_media(url):
         'progress_hooks': [progress_hook],  # Add progress hook here
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            # 'preferredformat': 'mp4'  # Remove or handle if causing issues
         }],
+        'ffmpeg_location': '/bin/ffmpeg',  # Update this to your FFmpeg binary path
     }
 
     try:
@@ -82,7 +87,6 @@ def download_media(url):
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
-
 # Function to track downloads in history
 def track_download(file_path):
     if file_path:
