@@ -20,7 +20,10 @@ cookies_file = 'cookies.txt'  # YouTube cookies file
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
+    logging.debug(f"Creating downloads directory: {output_dir}")
     os.makedirs(output_dir)
+else:
+    logging.debug(f"Downloads directory exists: {output_dir}")
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
@@ -31,7 +34,7 @@ os.system('yt-dlp -U')
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
 # Function to download media
@@ -56,7 +59,7 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Add specific logging for URL types
+    # Log URL type
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -75,11 +78,14 @@ def download_media(url, username=None, password=None):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
-        # Confirm if the file exists after download
+        # Log expected file path
+        logging.debug(f"Expected file path: {file_path}")
+
+        # Check if the downloaded file exists
         if not os.path.exists(file_path):
             part_file_path = f"{file_path}.part"
             if os.path.exists(part_file_path):
-                # If the .part file exists, rename it to the final file
+                # If a partial download exists, rename it
                 os.rename(part_file_path, file_path)
                 logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
             else:
@@ -101,9 +107,8 @@ def download_and_send(message, url, username=None, password=None):
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
-            # Check if the downloaded file is already an MP4
+            # Check if the downloaded file is an MP4
             if file_path.lower().endswith('.mp4'):
-                # Directly send the video file
                 with open(file_path, 'rb') as media:
                     bot2.send_video(message.chat.id, media)
             else:
@@ -116,6 +121,7 @@ def download_and_send(message, url, username=None, password=None):
 
             # Clean up by removing the file after sending
             os.remove(file_path)
+            logging.debug(f"Deleted file: {file_path}")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
