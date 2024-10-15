@@ -45,7 +45,7 @@ def download_media(url, username=None, password=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'cookiefile': cookies_file if os.path.exists(cookies_file) else None,  # Use cookie file if available
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
@@ -59,7 +59,7 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Log URL type
+    # Determine URL type and log accordingly
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -81,16 +81,16 @@ def download_media(url, username=None, password=None):
         # Log expected file path
         logging.debug(f"Expected file path: {file_path}")
 
-        # Check if the downloaded file exists
+        # Handle partial downloads
+        part_file_path = f"{file_path}.part"
+        if os.path.exists(part_file_path):
+            os.rename(part_file_path, file_path)
+            logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+
+        # Ensure the file exists
         if not os.path.exists(file_path):
-            part_file_path = f"{file_path}.part"
-            if os.path.exists(part_file_path):
-                # If a partial download exists, rename it
-                os.rename(part_file_path, file_path)
-                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-            else:
-                logging.error(f"Downloaded file not found at path: {file_path}")
-                raise Exception("Download failed: File not found after download.")
+            logging.error(f"Downloaded file not found at path: {file_path}")
+            raise Exception("Download failed: File not found after download.")
 
         return file_path
 
@@ -103,16 +103,17 @@ def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
+        # Execute download in a thread to avoid blocking the bot
         with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
-            # Check if the downloaded file is an MP4
+            # Check file extension to send appropriate media type
             if file_path.lower().endswith('.mp4'):
                 with open(file_path, 'rb') as media:
                     bot2.send_video(message.chat.id, media)
             else:
-                # Handle other formats (photo or document)
+                # Handle other formats like images or documents
                 with open(file_path, 'rb') as media:
                     if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                         bot2.send_photo(message.chat.id, media)
@@ -127,25 +128,25 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
+# Function to handle incoming messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
 
-    # Extract Instagram credentials if provided in the message
+    # Extract Instagram credentials if provided in the message (username:password@url)
     username = None
     password = None
-    if "@" in url:  # Example: url containing "username:password"
-        username, password = url.split('@', 1)  # Assuming format: username:password@url
-        url = password  # Change url to actual URL
+    if "@" in url:
+        username, password = url.split('@', 1)  # Splitting at @ assuming format username:password@url
+        url = password  # Set the actual URL
 
-    # Start a new thread for the task to avoid blocking the bot
+    # Start a new thread to handle download and sending
     threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
 
-# Flask routes for webhook handling
+# Flask route for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
