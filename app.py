@@ -1,11 +1,10 @@
 import os
 import logging
-import asyncio
 import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re
+from concurrent.futures import ThreadPoolExecutor
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -26,31 +25,38 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Ensure yt-dlp is updated
+os.system('yt-dlp -U')
+
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
+    import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Asynchronous function to download media
-async def download_media(url, username=None, password=None):
+# Function to download media
+def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
-    
+
+    # Set up options for yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),  # Save path for media files
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',  # Postprocessor to convert video formats
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
         }],
-        'socket_timeout': 20,  # Increase socket timeout
-        'retries': 10,  # Increase retries on download errors
+        'socket_timeout': 10,
+        'retries': 5,  # Retry on download errors
     }
 
+    # Instagram login, if credentials are provided
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Logging the URL type
+    # Add specific logging for URL types
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -65,16 +71,20 @@ async def download_media(url, username=None, password=None):
 
     try:
         # Attempt the download
-        await asyncio.get_event_loop().run_in_executor(None, yt_dlp.YoutubeDL(ydl_opts).download, [url])
-        
-        # Extract info for the downloaded file
-        info_dict = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
-        file_path = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info_dict)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
 
-        # Ensure that the downloaded file exists
+        # Confirm if the file exists after download
         if not os.path.exists(file_path):
-            logging.error(f"Downloaded file not found at path: {file_path}")
-            raise Exception("Download failed: File not found after download.")
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                # If the .part file exists, rename it to the final file
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+            else:
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
 
         return file_path
 
@@ -83,23 +93,29 @@ async def download_media(url, username=None, password=None):
         raise
 
 # Function to download media and send it asynchronously
-async def download_and_send(message, url, username=None, password=None):
+def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
-        
-        file_path = await download_media(url, username, password)
 
-        # Determine the media type and send accordingly
-        with open(file_path, 'rb') as media:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future = executor.submit(download_media, url, username, password)
+            file_path = future.result()
+
+            # Check if the downloaded file is already an MP4
             if file_path.lower().endswith('.mp4'):
-                bot2.send_video(message.chat.id, media)
-            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                bot2.send_photo(message.chat.id, media)
+                # Directly send the video file
+                with open(file_path, 'rb') as media:
+                    bot2.send_video(message.chat.id, media)
             else:
-                bot2.send_document(message.chat.id, media)
+                # Handle other formats (photo or document)
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
-        # Clean up by removing the file after sending
-        os.remove(file_path)
+            # Clean up by removing the file after sending
+            os.remove(file_path)
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
@@ -108,19 +124,17 @@ async def download_and_send(message, url, username=None, password=None):
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    url = message.text.strip()
+    url = message.text
 
     # Extract Instagram credentials if provided in the message
     username = None
     password = None
     if "@" in url:  # Example: url containing "username:password"
-        parts = url.split('@', 1)
-        if len(parts) == 2:
-            username, password = parts[0], parts[1]  # Assuming format: username:password@url
-            url = password  # Change url to actual URL
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
 
     # Start a new thread for the task to avoid blocking the bot
-    threading.Thread(target=lambda: asyncio.run(download_and_send(message, url, username, password))).start()
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
