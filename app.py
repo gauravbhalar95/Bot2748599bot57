@@ -20,16 +20,10 @@ cookies_file = 'cookies.txt'  # YouTube cookies file
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
-    logging.debug(f"Creating downloads directory: {output_dir}")
     os.makedirs(output_dir)
-else:
-    logging.debug(f"Downloads directory exists: {output_dir}")
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
-
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
@@ -37,26 +31,29 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# Function to download media
-# Function to download media
-def download_media(url, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url}")
-
-    # Set up options for yt-dlp
-    ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+# yt-dlp options optimized for speed
+def get_ydl_opts():
+    return {
+        'format': 'bestvideo+bestaudio/best',  # Best quality
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
-        'noprogress': True,  # Disable download progress to avoid issues in threading
+        'socket_timeout': 10,  # Reduced timeout to fail faster on poor connections
+        'retries': 3,  # Retry on failure
+        'quiet': True,  # Suppress verbose output to boost speed
+        'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
+        'noprogress': True,  # Disable progress bar for faster threading
     }
 
+# Function to download media using optimized yt-dlp
+def download_media(url, username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url}")
+
     # Instagram login, if credentials are provided
+    ydl_opts = get_ydl_opts()
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
@@ -75,49 +72,41 @@ def download_media(url, username=None, password=None):
         raise Exception("Unsupported URL!")
 
     try:
-        # Attempt the download
+        # Download media with yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
-        # Log expected file path
-        logging.debug(f"Expected file path: {file_path}")
+        # Check and handle partial downloads
+        part_file_path = f"{file_path}.part"
+        if os.path.exists(part_file_path):
+            os.rename(part_file_path, file_path)
+            logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
 
-        # Check if the downloaded file exists
         if os.path.exists(file_path):
             logging.debug(f"Downloaded file found: {file_path}")
+            return file_path
         else:
-            part_file_path = f"{file_path}.part"
-            if os.path.exists(part_file_path):
-                # If a partial download exists, rename it
-                os.rename(part_file_path, file_path)
-                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-            else:
-                logging.error(f"Downloaded file not found at path: {file_path}")
-                raise Exception("Download failed: File not found after download.")
-
-        return file_path
+            raise Exception("Download failed: File not found after download.")
 
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it asynchronously
+# Function to handle media download and send asynchronously
 def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        # Execute download in a thread to avoid blocking the bot
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:  # Increased workers for parallelism
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
-            # Check file extension to send appropriate media type
+            # Send the file to the user
             if file_path.lower().endswith('.mp4'):
                 with open(file_path, 'rb') as media:
                     bot2.send_video(message.chat.id, media)
             else:
-                # Handle other formats like images or documents
                 with open(file_path, 'rb') as media:
                     if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                         bot2.send_photo(message.chat.id, media)
@@ -137,20 +126,20 @@ def download_and_send(message, url, username=None, password=None):
 def handle_links(message):
     url = message.text
 
-    # Extract Instagram credentials if provided in the message (username:password@url)
+    # Extract Instagram credentials if provided in the message
     username = None
     password = None
-    if "@" in url:
-        username, password = url.split('@', 1)  # Splitting at @ assuming format username:password@url
-        url = password  # Set the actual URL
+    if "@" in url:  # Example: url containing "username:password"
+        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        url = password  # Change url to actual URL
 
-    # Start a new thread to handle download and sending
+    # Start a new thread for the task to avoid blocking the bot
     threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
 
-# Flask route for webhook handling
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
