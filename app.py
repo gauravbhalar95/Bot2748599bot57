@@ -38,6 +38,7 @@ def sanitize_filename(filename, max_length=200):
     return filename.strip()[:max_length]
 
 # Function to download media
+# Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
@@ -45,13 +46,14 @@ def download_media(url, username=None, password=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
-        'cookiefile': cookies_file if os.path.exists(cookies_file) else None,  # Use cookie file if available
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
+        'noprogress': True,  # Disable download progress to avoid issues in threading
     }
 
     # Instagram login, if credentials are provided
@@ -59,7 +61,7 @@ def download_media(url, username=None, password=None):
         ydl_opts['username'] = username
         ydl_opts['password'] = password
 
-    # Determine URL type and log accordingly
+    # Log URL type
     if 'instagram.com' in url:
         logging.debug("Processing Instagram URL")
     elif 'twitter.com' in url or 'x.com' in url:
@@ -81,16 +83,18 @@ def download_media(url, username=None, password=None):
         # Log expected file path
         logging.debug(f"Expected file path: {file_path}")
 
-        # Handle partial downloads
-        part_file_path = f"{file_path}.part"
-        if os.path.exists(part_file_path):
-            os.rename(part_file_path, file_path)
-            logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-
-        # Ensure the file exists
-        if not os.path.exists(file_path):
-            logging.error(f"Downloaded file not found at path: {file_path}")
-            raise Exception("Download failed: File not found after download.")
+        # Check if the downloaded file exists
+        if os.path.exists(file_path):
+            logging.debug(f"Downloaded file found: {file_path}")
+        else:
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                # If a partial download exists, rename it
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+            else:
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
 
         return file_path
 
