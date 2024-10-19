@@ -130,7 +130,8 @@ def handle_links(message):
     username = None
     password = None
     if "@" in url:  # Example: url containing "username:password"
-        username, password = url.split('@', 1)  # Assuming format: username:password@url
+        parts = url.split('@')
+        username, password = parts[0], parts[1]
         url = password  # Change url to actual URL
 
     # Start a new thread for the task to avoid blocking the bot
