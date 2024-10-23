@@ -34,7 +34,8 @@ def sanitize_filename(filename, max_length=200):
 # yt-dlp options optimized for speed
 def get_ydl_opts():
     return {
-        'format': 'best[ext=mp4]/best',  # Best quality
+        'format': 'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+,  # Best quality
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
