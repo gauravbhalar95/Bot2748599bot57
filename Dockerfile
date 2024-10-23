@@ -1,22 +1,20 @@
-# Use the official Python image
 FROM python:3.9-slim
 
 # Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
+RUN apt-get update && apt-get install -y ffmpeg
 
 # Set the working directory
 WORKDIR /app
 
 # Copy the requirements file and install dependencies
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Copy the application code
-COPY app.py app.py
-COPY cookies.txt cookies.txt  # Make sure you have this file in the same directory
+# Copy the rest of the application code
+COPY . .
 
-# Ensure the output directory exists
-RUN mkdir -p /app/downloads
+# Expose the port Flask will run on
+EXPOSE 8080
 
-# Set the command to run your app
-CMD ["python", "app.py"]
+# Command to run your application
+CMD python app.py
