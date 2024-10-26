@@ -5,10 +5,11 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
+from moviepy.editor import VideoFileClip
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -16,7 +17,7 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'
+cookies_file = 'cookies.txt'  # YouTube cookies file
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
@@ -25,26 +26,27 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# yt-dlp options optimized for quality and minimal processing
+# Function to sanitize filenames
+def sanitize_filename(filename, max_length=200):
+    import re
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
+    return filename.strip()[:max_length]
+
+# yt-dlp options optimized for speed
 def get_ydl_opts():
     return {
-        'format': 'bestvideo[height<=720]+bestaudio/best',  # Best quality up to 720p
-        'outtmpl': f'{output_dir}%(title).100s.%(ext)s',  # Short filename length for safety
-        'cookiefile': cookies_file,
-        'socket_timeout': 10,
-        'retries': 3,
-        'quiet': True,
-        'ffmpeg_location': '/bin/ffmpeg',  # Path to ffmpeg
-        'concurrent_fragment_downloads': 5,  # Concurrency for speed
-        'noprogress': True,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-            'when': 'mp4'  # Only convert if necessary
-        }],
+        'format': 'best[ext=mp4]/best',  # Best quality
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'socket_timeout': 10,  # Reduced timeout to fail faster on poor connections
+        'retries': 3,  # Retry on failure
+        'quiet': True,  # Suppress verbose output
+        'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
+        'noprogress': True,  # Disable progress bar
     }
 
-# Download media function optimized to avoid re-encoding if possible
+# Function to download media using optimized yt-dlp
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
     ydl_opts = get_ydl_opts()
@@ -61,14 +63,30 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to handle media download and send asynchronously
-def download_and_send(message, url, username=None, password=None):
+# Function to trim video based on start and end times
+def trim_video(file_path, start_time, end_time):
+    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
+    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
+    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
+
+    with VideoFileClip(file_path) as video:
+        trimmed_video = video.subclip(start_seconds, end_seconds)
+        trimmed_video.write_videofile(trimmed_path, codec="libx264")
+
+    return trimmed_path
+
+# Function to handle media download, trimming, and send asynchronously
+def download_and_send(message, url, start_time=None, end_time=None, username=None, password=None):
     try:
-        bot2.reply_to(message, "Downloading media at best quality and speed, please wait...")
+        bot2.reply_to(message, "Downloading media, this may take some time...")
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
+
+            # Trim video if start and end times are provided
+            if start_time and end_time:
+                file_path = trim_video(file_path, start_time, end_time)
 
             # Send the file to the user
             with open(file_path, 'rb') as media:
@@ -82,11 +100,17 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle incoming messages with URL
+# Function to handle incoming messages with URL and optional start and end times
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    url = message.text.split()[0]
-    threading.Thread(target=download_and_send, args=(message, url)).start()
+    text = message.text.split()
+    url = text[0]
+
+    # Extract optional start and end times
+    start_time = text[1] if len(text) > 1 else None
+    end_time = text[2] if len(text) > 2 else None
+
+    threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
 
 # Flask app setup
 app = Flask(__name__)
