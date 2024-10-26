@@ -32,19 +32,32 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# yt-dlp options optimized for speed
+# yt-dlp options optimized for high video quality
 def get_ydl_opts():
     return {
-        'format': 'best[ext=mp4]/best',  # Best quality
+        'format': 'bestvideo+bestaudio/best',  # Best video and audio quality
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 10,  # Reduced timeout to fail faster on poor connections
-        'retries': 3,  # Retry on failure
-        'quiet': True,  # Suppress verbose output
-        'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
-        'noprogress': True,  # Disable progress bar
+        'socket_timeout': 10,
+        'retries': 3,
+        'quiet': True,
+        'concurrent_fragment_downloads': 5,
+        'noprogress': True,
     }
+
+# Function to trim video based on start and end times with improved quality settings
+def trim_video(file_path, start_time, end_time):
+    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
+    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
+    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
+
+    with VideoFileClip(file_path) as video:
+        trimmed_video = video.subclip(start_seconds, end_seconds)
+        # Export with higher bitrate for improved quality
+        trimmed_video.write_videofile(trimmed_path, codec="libx264", bitrate="5000k")  # Adjust bitrate as needed
+
+    return trimmed_path
 
 # Function to download media using optimized yt-dlp
 def download_media(url, username=None, password=None):
