@@ -25,27 +25,26 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# yt-dlp options optimized for best quality with speed adjustments
+# yt-dlp options optimized for quality and minimal processing
 def get_ydl_opts():
     return {
-        'format': 'bestvideo[height<=1080]+bestaudio/best',  # Best video quality up to 1080p
-        'outtmpl': f'{output_dir}%(title).150s.%(ext)s',  # Shortened filename limit
+        'format': 'bestvideo[height<=720]+bestaudio/best',  # Best quality up to 720p
+        'outtmpl': f'{output_dir}%(title).100s.%(ext)s',  # Short filename length for safety
         'cookiefile': cookies_file,
         'socket_timeout': 10,
         'retries': 3,
         'quiet': True,
-        'ffmpeg_location': '/bin/ffmpeg',  # Ensure ffmpeg is available
-        'concurrent_fragment_downloads': 10,  # Increase fragment concurrency for speed
+        'ffmpeg_location': '/bin/ffmpeg',  # Path to ffmpeg
+        'concurrent_fragment_downloads': 5,  # Concurrency for speed
         'noprogress': True,
-        'postprocessors': [
-            {
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4'  # Convert only if necessary
-            }
-        ],
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+            'when': 'mkv'  # Only convert if necessary
+        }],
     }
 
-# Download media function optimized for speed and quality
+# Download media function optimized to avoid re-encoding if possible
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
     ydl_opts = get_ydl_opts()
@@ -63,7 +62,7 @@ def download_media(url, username=None, password=None):
         raise
 
 # Function to handle media download and send asynchronously
-def download_and_send(message, url, start_time=None, end_time=None, username=None, password=None):
+def download_and_send(message, url, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media at best quality and speed, please wait...")
 
