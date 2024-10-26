@@ -32,88 +32,19 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# yt-dlp options to prioritize 720p resolution in MP4 format
+# yt-dlp options optimized for speed
 def get_ydl_opts():
     return {
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',  # Selects best MP4 video <=720p
+        'format': 'best[ext=mp4]/best',  # Best quality
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
-        'socket_timeout': 10,
-        'retries': 3,
-        'quiet': True,
-        'ffmpeg_location': '/bin/ffmpeg',  # Path to ffmpeg
-        'merge_output_format': 'mp4',  # Ensure final output as MP4
+        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'socket_timeout': 10,  # Reduced timeout to fail faster on poor connections
+        'retries': 3,  # Retry on failure
+        'quiet': True,  # Suppress verbose output
+        'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
+        'noprogress': True,  # Disable progress bar
     }
-
-# Function to trim video with custom ffmpeg path
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
-
-    # Use custom ffmpeg path with moviepy
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        trimmed_video.write_videofile(trimmed_path, codec="libx264", ffmpeg_exe="/bin/ffmpeg")
-
-    return trimmed_path
-# Function to trim video with custom ffmpeg path
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
-
-    # Use custom ffmpeg path with moviepy
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        trimmed_video.write_videofile(
-            trimmed_path, codec="libx264", bitrate="5000k", ffmpeg_params=["-y"], ffmpeg_exe="/bin/ffmpeg"
-        )
-
-    return trimmed_path
-
-# Function to trim video with custom ffmpeg path
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
-
-    # Use custom ffmpeg path with moviepy
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        trimmed_video.write_videofile(
-            trimmed_path, codec="libx264", bitrate="5000k", ffmpeg_params=["-y"], ffmpeg_exe="/bin/ffmpeg"
-        )
-
-    return trimmed_path
-
-# Function to trim video with custom ffmpeg path
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
-
-    # Use custom ffmpeg path with moviepy
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        trimmed_video.write_videofile(
-            trimmed_path, codec="libx264", bitrate="5000k", ffmpeg_params=["-y"], ffmpeg_exe="/bin/ffmpeg"
-        )
-
-    return trimmed_path
-
-# Function to trim video based on start and end times with improved quality settings
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
-
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        # Export with higher bitrate for improved quality
-        trimmed_video.write_videofile(trimmed_path, codec="libx264", bitrate="5000k")  # Adjust bitrate as needed
-
-    return trimmed_path
 
 # Function to download media using optimized yt-dlp
 def download_media(url, username=None, password=None):
