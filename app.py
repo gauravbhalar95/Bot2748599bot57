@@ -32,21 +32,31 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# yt-dlp options optimized for high video quality and custom ffmpeg path
+# yt-dlp options without postprocessing to avoid conversion issues
 def get_ydl_opts():
     return {
-        'format': 'bestvideo+bestaudio/best',  # Best video and audio quality
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',  # Best video and audio in MP4 where possible
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 3,
         'quiet': True,
-        'concurrent_fragment_downloads': 5,
-        'noprogress': True,
-        'ffmpeg_location': '/bin/ffmpeg'  # Set ffmpeg path here
+        'ffmpeg_location': '/bin/ffmpeg',  # Set ffmpeg path here
+        'merge_output_format': 'mp4'  # Forces final output as MP4
     }
 
+# Function to trim video with custom ffmpeg path
+def trim_video(file_path, start_time, end_time):
+    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
+    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
+    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
+
+    # Use custom ffmpeg path with moviepy
+    with VideoFileClip(file_path) as video:
+        trimmed_video = video.subclip(start_seconds, end_seconds)
+        trimmed_video.write_videofile(trimmed_path, codec="libx264", ffmpeg_exe="/bin/ffmpeg")
+
+    return trimmed_path
 # Function to trim video with custom ffmpeg path
 def trim_video(file_path, start_time, end_time):
     trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
