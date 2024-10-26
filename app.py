@@ -40,7 +40,7 @@ def get_ydl_opts():
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
-            'when': 'mkv'  # Only convert if necessary
+            'when': 'mp4'  # Only convert if necessary
         }],
     }
 
