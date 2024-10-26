@@ -32,17 +32,17 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# yt-dlp options without postprocessing to avoid conversion issues
+# yt-dlp options to prioritize 720p resolution in MP4 format
 def get_ydl_opts():
     return {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',  # Best video and audio in MP4 where possible
+        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',  # Selects best MP4 video <=720p
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'socket_timeout': 10,
         'retries': 3,
         'quiet': True,
-        'ffmpeg_location': '/bin/ffmpeg',  # Set ffmpeg path here
-        'merge_output_format': 'mp4'  # Forces final output as MP4
+        'ffmpeg_location': '/bin/ffmpeg',  # Path to ffmpeg
+        'merge_output_format': 'mp4',  # Ensure final output as MP4
     }
 
 # Function to trim video with custom ffmpeg path
