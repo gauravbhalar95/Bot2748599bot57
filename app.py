@@ -9,7 +9,7 @@ from moviepy.editor import VideoFileClip
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
+CHANNEL_ID = os.getenv('channel')  # Your Channel ID with @, like '@YourChannel'
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -26,6 +26,15 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Function to check if a user is a member of the required channel
+def is_user_in_channel(user_id):
+    try:
+        member = bot2.get_chat_member(CHANNEL_ID, user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except Exception as e:
+        logging.error(f"Error checking channel membership: {e}")
+        return False
+
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=200):
     import re
@@ -35,15 +44,15 @@ def sanitize_filename(filename, max_length=200):
 # yt-dlp options optimized for speed
 def get_ydl_opts():
     return {
-        'format': 'best[ext=mp4]/best',  # Best quality
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 10,  # Reduced timeout to fail faster on poor connections
-        'retries': 3,  # Retry on failure
-        'quiet': True,  # Suppress verbose output
-        'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
-        'noprogress': True,  # Disable progress bar
+        'socket_timeout': 10,
+        'retries': 3,
+        'quiet': True,
+        'concurrent_fragment_downloads': 5,
+        'noprogress': True,
     }
 
 # Function to download media using optimized yt-dlp
@@ -103,6 +112,11 @@ def download_and_send(message, url, start_time=None, end_time=None, username=Non
 # Function to handle incoming messages with URL and optional start and end times
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
+    # Check if the user is a member of the required channel
+    if not is_user_in_channel(message.from_user.id):
+        bot2.reply_to(message, f"Please join our channel to use this bot: {CHANNEL_ID}")
+        return
+
     text = message.text.split()
     url = text[0]
 
