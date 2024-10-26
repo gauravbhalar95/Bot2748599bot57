@@ -32,10 +32,10 @@ def sanitize_filename(filename, max_length=200):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
-# yt-dlp options optimized for speed
+# yt-dlp options optimized for 720p
 def get_ydl_opts():
     return {
-        'format': 'best[ext=mp4]/best',  # Best quality
+        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',  # Limit quality to 720p
         'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
@@ -45,7 +45,6 @@ def get_ydl_opts():
         'concurrent_fragment_downloads': 5,  # Maximize concurrency for fragment downloads
         'noprogress': True,  # Disable progress bar
     }
-
 # Function to download media using optimized yt-dlp
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
