@@ -6,4 +6,4 @@ python-telegram-bot
 yt-dlp
 beautifulsoup4
 moviepy
-
+instaloader
