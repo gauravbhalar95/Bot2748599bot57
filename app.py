@@ -82,19 +82,19 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download Instagram image
+# Updated function to download Instagram images
 def download_instagram_image(url):
-    # Ensure the downloads directory exists
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
+    # Initialize Instaloader with custom directory
     loader = instaloader.Instaloader(download_videos=False, save_metadata=False)
-    
+    loader.dirname_pattern = output_dir  # Set download directory to 'downloads/'
+
     # Extract shortcode from the URL
     shortcode = url.split("/")[-2]
     try:
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
-        image_path = f"{output_dir}{post.shortcode}.jpg"
+        
+        # Construct full path where the image will be saved
+        image_path = os.path.join(output_dir, f"{post.shortcode}.jpg")
         
         # Download the image
         loader.download_pic(image_path, post.url, post.date_utc)
