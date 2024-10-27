@@ -82,13 +82,26 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Updated Function to handle Instagram image download
+# Function to download Instagram image
 def download_instagram_image(url):
-    loader = instaloader.Instaloader()
-    post = instaloader.Post.from_shortcode(loader.context, url.split("/")[-2])
-    image_path = f'{output_dir}{post.shortcode}.jpg'
-    loader.download_pic(image_path, post.url, post.date_utc)
-    return image_path
+    # Ensure the downloads directory exists
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    loader = instaloader.Instaloader(download_videos=False, save_metadata=False)
+    
+    # Extract shortcode from the URL
+    shortcode = url.split("/")[-2]
+    try:
+        post = instaloader.Post.from_shortcode(loader.context, shortcode)
+        image_path = f"{output_dir}{post.shortcode}.jpg"
+        
+        # Download the image
+        loader.download_pic(image_path, post.url, post.date_utc)
+        return image_path
+    except Exception as e:
+        logging.error(f"Error downloading Instagram image: {e}")
+        raise Exception("Failed to download Instagram image")
 
 # Function to trim video based on start and end times
 def trim_video(file_path, start_time, end_time):
