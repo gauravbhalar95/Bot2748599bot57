@@ -3,6 +3,7 @@ import logging
 import threading
 from flask import Flask, request
 import telebot
+import instaloader
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from moviepy.editor import VideoFileClip
