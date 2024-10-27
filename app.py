@@ -6,6 +6,7 @@ import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from moviepy.editor import VideoFileClip
+from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -25,6 +26,14 @@ if not os.path.exists(output_dir):
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
+
+# Function to validate URLs
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
 
 # Function to check if a user is a member of the required channel
 def is_user_in_channel(user_id):
@@ -120,10 +129,16 @@ def handle_links(message):
     text = message.text.split()
     url = text[0]
 
+    # Validate the URL before proceeding
+    if not is_valid_url(url):
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
+
     # Extract optional start and end times
     start_time = text[1] if len(text) > 1 else None
     end_time = text[2] if len(text) > 2 else None
 
+    # Start download in a new thread
     threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
 
 # Flask app setup
