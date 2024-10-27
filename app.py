@@ -82,6 +82,7 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Updated Function to handle Instagram image download
 def download_instagram_image(url):
     loader = instaloader.Instaloader()
     post = instaloader.Post.from_shortcode(loader.context, url.split("/")[-2])
