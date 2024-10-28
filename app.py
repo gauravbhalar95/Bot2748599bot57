@@ -5,12 +5,11 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
-from moviepy.editor import VideoFileClip
 from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('channel')  # Your Channel ID with @, like '@YourChannel'
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -27,6 +26,15 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Ensure yt-dlp is updated
+os.system('yt-dlp -U')
+
+# Function to sanitize filenames
+def sanitize_filename(filename, max_length=200):
+    import re
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
+
 # Function to validate URLs
 def is_valid_url(url):
     try:
@@ -35,39 +43,23 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to check if a user is a member of the required channel
-def is_user_in_channel(user_id):
-    try:
-        member = bot2.get_chat_member(CHANNEL_ID, user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except Exception as e:
-        logging.error(f"Error checking channel membership: {e}")
-        return False
-
-# Function to sanitize filenames
-def sanitize_filename(filename, max_length=200):
-    import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
-    return filename.strip()[:max_length]
-
-# yt-dlp options optimized for speed
-def get_ydl_opts():
-    return {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 10,
-        'retries': 3,
-        'quiet': True,
-        'concurrent_fragment_downloads': 5,
-        'noprogress': True,
-    }
-
-# Function to download media using optimized yt-dlp
+# Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
-    ydl_opts = get_ydl_opts()
+
+    # Set up options for yt-dlp
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'socket_timeout': 10,
+        'retries': 5,  # Retry on download errors
+    }
+
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
@@ -76,71 +68,69 @@ def download_media(url, username=None, password=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+
+        if not os.path.exists(file_path):
+            part_file_path = f"{file_path}.part"
+            if os.path.exists(part_file_path):
+                os.rename(part_file_path, file_path)
+                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
+            else:
+                logging.error(f"Downloaded file not found at path: {file_path}")
+                raise Exception("Download failed: File not found after download.")
+
         return file_path
+
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to trim video based on start and end times
-def trim_video(file_path, start_time, end_time):
-    trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
-    start_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(start_time.split(":"))))
-    end_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(end_time.split(":"))))
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None):
+    if not is_valid_url(url):
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
 
-    with VideoFileClip(file_path) as video:
-        trimmed_video = video.subclip(start_seconds, end_seconds)
-        trimmed_video.write_videofile(trimmed_path, codec="libx264")
-
-    return trimmed_path
-
-# Function to handle media download, trimming, and send asynchronously
-def download_and_send(message, url, start_time=None, end_time=None, username=None, password=None):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
-            # Trim video if start and end times are provided
-            if start_time and end_time:
-                file_path = trim_video(file_path, start_time, end_time)
+            # Check if the downloaded file is already an MP4
+            if file_path.lower().endswith('.mp4'):
+                with open(file_path, 'rb') as media:
+                    bot2.send_video(message.chat.id, media)
+            else:
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
-            # Send the file to the user
-            with open(file_path, 'rb') as media:
-                bot2.send_video(message.chat.id, media)
-
-            # Clean up by removing the file after sending
             os.remove(file_path)
-            logging.debug(f"Deleted file: {file_path}")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle incoming messages with URL and optional start and end times
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    # Check if the user is a member of the required channel
-    if not is_user_in_channel(message.from_user.id):
-        bot2.reply_to(message, f"Please join our channel to use this bot: {CHANNEL_ID}")
-        return
-    text = message.text.split()
-    url = text[0]
-    # Validate the URL before proceeding
-    if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
+    url = message.text
 
-    # Extract optional start and end times
-    start_time = text[1] if len(text) > 1 else None
-    end_time = text[2] if len(text) > 2 else None
-    # Start download in a new thread
-    threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
+    username = None
+    password = None
+    if "@" in url:
+        username, password = url.split('@', 1)
+        url = password
+
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
