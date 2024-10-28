@@ -3,7 +3,6 @@ import logging
 import threading
 from flask import Flask, request
 import telebot
-import instaloader
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from moviepy.editor import VideoFileClip
@@ -82,13 +81,6 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-def download_instagram_image(url):
-    loader = instaloader.Instaloader()
-    post = instaloader.Post.from_shortcode(loader.context, url.split("/")[-2])
-    image_path = f'{output_dir}{post.shortcode}.jpg'
-    loader.download_pic(image_path, post.url, post.date_utc)
-    return image_path
-
 # Function to trim video based on start and end times
 def trim_video(file_path, start_time, end_time):
     trimmed_path = os.path.join(output_dir, "trimmed_" + os.path.basename(file_path))
@@ -138,18 +130,6 @@ def handle_links(message):
     # Validate the URL before proceeding
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
-    # Handle Instagram URLs separately
-    if "instagram.com" in url:
-        try:
-            bot2.reply_to(message, "Downloading Instagram image, this may take some time...")
-            image_path = download_instagram_image(url)
-            with open(image_path, 'rb') as image:
-                bot2.send_photo(message.chat.id, image)
-            os.remove(image_path)  # Clean up by removing the file after sending
-        except Exception as e:
-            bot2.reply_to(message, f"Failed to download Instagram image. Error: {str(e)}")
-            logging.error(f"Instagram download failed: {e}")
         return
 
     # Extract optional start and end times
