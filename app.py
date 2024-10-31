@@ -49,17 +49,16 @@ def download_media(url, username=None, password=None):
 
     # Set up options for yt-dlp
     ydl_opts = {
-    'format': 'best[ext=mp4]/best',
-    'outtmpl': f'{output_dir}%(title)s.%(ext)s',
-    'cookiefile': cookies_file,
-    'postprocessors': [{
-        'key': 'FFmpegVideoConvertor',
-        'preferedformat': 'mp4',
-    }],
-    'socket_timeout': 10,
-    'retries': 5,
-    'proxy': 'socks5://219.100.37.236:15358',  # Replace with actual proxy IP and port
-}
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
+        'socket_timeout': 10,
+        'retries': 5,  # Retry on download errors
+    }
 
     if username and password:
         ydl_opts['username'] = username
