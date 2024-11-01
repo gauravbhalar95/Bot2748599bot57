@@ -35,6 +35,14 @@ def sanitize_filename(filename, max_length=100):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
+# Function to validate URLs
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
+
 # Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
@@ -84,12 +92,14 @@ def download_and_send(message, url, username=None, password=None):
 
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
+        logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
-            # Check if the downloaded file is already an MP4
+            logging.debug(f"Download completed, file path: {file_path}")
+
             if file_path.lower().endswith('.mp4'):
                 with open(file_path, 'rb') as media:
                     bot2.send_video(message.chat.id, media)
@@ -101,6 +111,7 @@ def download_and_send(message, url, username=None, password=None):
                         bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
+            bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
