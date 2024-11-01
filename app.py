@@ -29,8 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Function to sanitize filenames with a custom max length
-def sanitize_filename(filename, max_length=800):
+def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
