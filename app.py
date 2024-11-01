@@ -29,28 +29,20 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Function to sanitize filenames
-def sanitize_filename(filename, max_length=200):
+# Function to sanitize filenames with a custom max length
+def sanitize_filename(filename, max_length=100):
     import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
-
-# Function to validate URLs
-def is_valid_url(url):
-    try:
-        result = urlparse(url)
-        return all([result.scheme, result.netloc])
-    except ValueError:
-        return False
 
 # Function to download media
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Set up options for yt-dlp
+    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',  # Save path for media files
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
