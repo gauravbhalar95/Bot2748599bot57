@@ -57,6 +57,7 @@ def download_media(url, username=None, password=None):
         }],
         'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
     if username and password:
