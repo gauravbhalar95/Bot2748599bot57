@@ -64,12 +64,18 @@ def preview_metadata(url):
         return "Unable to retrieve metadata."
 
 # Function to download media
-def download_media(url, username=None, password=None, use_proxy=None):
+def download_media(url, custom_name=None, username=None, password=None, use_proxy=None):
     logging.debug(f"Attempting to download media from URL: {url}")
+
+    # Set up output template with optional custom name
+    if custom_name:
+        output_template = f'{output_dir}{sanitize_filename(custom_name)}.%(ext)s'
+    else:
+        output_template = f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s'
 
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': output_template,
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
@@ -126,12 +132,12 @@ def create_thumbnail(video_path):
         logging.error(f"Thumbnail creation failed: {str(e)}")
 
 # Schedule downloads
-def schedule_download(message, url, username=None, password=None, delay=60):
+def schedule_download(message, url, custom_name=None, username=None, password=None, delay=60):
     time.sleep(delay)
-    download_and_send(message, url, username, password)
+    download_and_send(message, url, custom_name, username, password)
 
 # Function to handle downloading and sending files asynchronously
-def download_and_send(message, url, username=None, password=None, use_proxy=None):
+def download_and_send(message, url, custom_name=None, username=None, password=None, use_proxy=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -146,7 +152,7 @@ def download_and_send(message, url, username=None, password=None, use_proxy=None
 
         logging.debug("Initiating media download")
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password, use_proxy)
+            future = executor.submit(download_media, url, custom_name, username, password, use_proxy)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -181,7 +187,9 @@ def cleanup_old_files(days=1):
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    url = message.text
+    text = message.text.split(' ', 1)  # Split input into URL and optional custom name
+    url = text[0]
+    custom_name = text[1].strip() if len(text) > 1 else None
 
     username = None
     password = None
@@ -190,7 +198,7 @@ def handle_links(message):
         url = password
 
     # Schedule downloads if needed
-    threading.Thread(target=schedule_download, args=(message, url, username, password)).start()
+    threading.Thread(target=schedule_download, args=(message, url, custom_name, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
