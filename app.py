@@ -42,15 +42,15 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media
+# Function to download media with special handling for Twitter
 def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Set up options for yt-dlp with filename sanitization
+    # Default yt-dlp options
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'format': 'bestvideo+bestaudio/best',  # Optimal video+audio for generic URLs
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'cookiefile': cookies_file,  # Use cookie file if required
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
@@ -59,6 +59,12 @@ def download_media(url, username=None, password=None):
         'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
+
+    # Special options for Twitter video
+    if "twitter.com" in urlparse(url).netloc:
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'  # Handle long-length video streams
+        ydl_opts['merge_output_format'] = 'mp4'  # Merge video and audio into mp4
+        logging.debug("Special Twitter video download configuration applied.")
 
     if username and password:
         ydl_opts['username'] = username
