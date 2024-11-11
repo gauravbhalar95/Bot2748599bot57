@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -30,10 +31,6 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
-
-# Rate limiting (simple in-memory limit)
-user_download_limits = {}  # Track download requests per user
-RATE_LIMIT = 5  # Max downloads per user per hour
 
 def is_valid_url(url):
     """Validate the given URL."""
