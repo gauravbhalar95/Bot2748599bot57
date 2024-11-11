@@ -17,7 +17,7 @@ if not API_TOKEN_2:
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
-telebot.logger.setLevel(logging.INFO)  # Adjust logging level as needed
+telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
@@ -26,11 +26,44 @@ cookies_file = 'cookies.txt'
 # Ensure the downloads directory exists
 os.makedirs(output_dir, exist_ok=True)
 
-# Enable logging
+# Enable debug logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
+
+def is_valid_url(url):
+    """Validate the given URL."""
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
+
+def download_media(url):
+    """Download media using yt-dlp."""
+    logging.debug(f"Downloading media from URL: {url}")
+    output_template = f'{output_dir}%(title)s.%(ext)s'
+
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': output_template,
+        'cookiefile': cookies_file,
+        'socket_timeout': 10,
+        'retries': 5,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            if not os.path.exists(file_path):
+                raise FileNotFoundError("Download failed: File not found.")
+        return file_path
+    except Exception as e:
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
 
 def download_and_send(message, url):
     """Download media and send it via Telegram."""
@@ -63,7 +96,6 @@ def download_and_send(message, url):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-
 # Flask app setup
 app = Flask(__name__)
 
@@ -79,8 +111,8 @@ def getMessage_bot2():
         logging.error(f"Error processing update: {e}")
     return "!", 200
 
-@app.route('/')
-def webhook():
+@app.route('/set_webhook', methods=['GET'])
+def set_webhook():
     """Set webhook for Telegram bot."""
     try:
         bot2.remove_webhook()
