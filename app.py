@@ -31,10 +31,6 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Rate limiting (simple in-memory limit)
-user_download_limits = {}  # Track download requests per user
-RATE_LIMIT = 5  # Max downloads per user per hour
-
 def is_valid_url(url):
     """Validate the given URL."""
     try:
@@ -74,10 +70,6 @@ def download_and_send(message, url):
         bot2.reply_to(message, "The provided URL is not valid.")
         return
 
-    if user_download_limits.get(message.chat.id, 0) >= RATE_LIMIT:
-        bot2.reply_to(message, "You have reached the download limit. Please try again later.")
-        return
-
     try:
         bot2.reply_to(message, "Downloading media...")
         logging.debug(f"Initiating media download for user {message.chat.id}")
@@ -98,7 +90,6 @@ def download_and_send(message, url):
 
             os.remove(file_path)
             bot2.reply_to(message, "Download completed successfully.")
-            user_download_limits[message.chat.id] = user_download_limits.get(message.chat.id, 0) + 1
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
