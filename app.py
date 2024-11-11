@@ -20,7 +20,7 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'
+cookies_file = 'cookies.txt'  # Optional: Use if Instagram requires authentication
 
 # Ensure the downloads directory exists
 os.makedirs(output_dir, exist_ok=True)
@@ -28,9 +28,7 @@ os.makedirs(output_dir, exist_ok=True)
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
-
+# Function to validate URLs
 def is_valid_url(url):
     """Validate the given URL."""
     try:
@@ -47,10 +45,12 @@ def download_media(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': output_template,
-        'cookiefile': cookies_file,
+        'cookiefile': cookies_file if os.path.exists(cookies_file) else None,  # Use cookies if available
         'socket_timeout': 10,
         'retries': 5,
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'quiet': False,
+        'noplaylist': True  # Avoid downloading playlists unless explicitly required
     }
 
     try:
