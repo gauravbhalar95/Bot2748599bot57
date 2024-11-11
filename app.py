@@ -1,15 +1,18 @@
 import os
 import logging
-import threading
-import time
 from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
-# Load API tokens and channel IDs from environment variables
+# Load API tokens and environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
+KOYEB_URL = os.getenv('KOYEB_URL')
+
+# Ensure API token is provided
+if not API_TOKEN_2:
+    raise ValueError("API_TOKEN_2 environment variable not set.")
 
 # Initialize the bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -20,31 +23,29 @@ output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
 # Ensure the downloads directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+os.makedirs(output_dir, exist_ok=True)
 
 # Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Rate limiting and access control
+# Rate limiting (simple in-memory limit)
 user_download_limits = {}  # Track download requests per user
-RATE_LIMIT = 5  # Maximum downloads allowed per user per hour
+RATE_LIMIT = 5  # Max downloads per user per hour
 
-# Function to validate URLs
 def is_valid_url(url):
+    """Validate the given URL."""
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
 
-# Function to download media
 def download_media(url):
-    logging.debug(f"Attempting to download media from URL: {url}")
-
+    """Download media using yt-dlp."""
+    logging.debug(f"Downloading media from URL: {url}")
     output_template = f'{output_dir}%(title)s.%(ext)s'
 
     ydl_opts = {
@@ -61,14 +62,14 @@ def download_media(url):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             if not os.path.exists(file_path):
-                raise Exception("Download failed: File not found.")
+                raise FileNotFoundError("Download failed: File not found.")
         return file_path
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to handle downloading and sending files asynchronously
 def download_and_send(message, url):
+    """Download media and send it via Telegram."""
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid.")
         return
@@ -79,8 +80,8 @@ def download_and_send(message, url):
 
     try:
         bot2.reply_to(message, "Downloading media...")
+        logging.debug(f"Initiating media download for user {message.chat.id}")
 
-        logging.debug("Initiating media download")
         with ThreadPoolExecutor(max_workers=3) as executor:
             future = executor.submit(download_media, url)
             file_path = future.result()
@@ -106,17 +107,31 @@ def download_and_send(message, url):
 # Flask app setup
 app = Flask(__name__)
 
-# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    """Process incoming Telegram webhook updates."""
+    try:
+        json_str = request.stream.read().decode("utf-8")
+        update = telebot.types.Update.de_json(json_str)
+        logging.debug(f"Received update: {json_str}")
+        bot2.process_new_updates([update])
+    except Exception as e:
+        logging.error(f"Error processing update: {e}")
     return "!", 200
 
 @app.route('/')
 def webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
+    """Set webhook for Telegram bot."""
+    try:
+        bot2.remove_webhook()
+        webhook_url = f"{KOYEB_URL}/{API_TOKEN_2}"
+        bot2.set_webhook(url=webhook_url, timeout=60)
+        logging.debug(f"Webhook set to {webhook_url}")
+        return "Webhook set", 200
+    except Exception as e:
+        logging.error(f"Error setting webhook: {e}")
+        return "Webhook error", 500
 
 if __name__ == "__main__":
+    logging.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=8080, debug=True)
