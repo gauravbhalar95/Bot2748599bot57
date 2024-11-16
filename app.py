@@ -81,11 +81,11 @@ def download_media(url, quality='best'):
         raise
 
 # Function to send quality options inline button
-def send_quality_options(message):
+def send_quality_options(message, url):
     markup = telebot.types.InlineKeyboardMarkup()
-    btn_720p = telebot.types.InlineKeyboardButton("720p", callback_data='quality_720p')
-    btn_1080p = telebot.types.InlineKeyboardButton("1080p", callback_data='quality_1080p')
-    btn_best = telebot.types.InlineKeyboardButton("Best Quality", callback_data='quality_best')
+    btn_720p = telebot.types.InlineKeyboardButton("720p", callback_data=f'quality_720p_{url}')
+    btn_1080p = telebot.types.InlineKeyboardButton("1080p", callback_data=f'quality_1080p_{url}')
+    btn_best = telebot.types.InlineKeyboardButton("Best Quality", callback_data=f'quality_best_{url}')
 
     markup.add(btn_720p, btn_1080p, btn_best)
     bot2.send_message(message.chat.id, "Please choose the quality for the video:", reply_markup=markup)
@@ -93,18 +93,20 @@ def send_quality_options(message):
 # Function to handle inline button clicks
 @bot2.callback_query_handler(func=lambda call: call.data.startswith('quality_'))
 def handle_quality_selection(call):
-    quality = call.data.split('_')[1]
+    # Extract quality and URL from the callback data
+    data = call.data.split('_')
+    quality = data[1]
+    url = '_'.join(data[2:])  # Reconstruct the URL after the quality part
+
     bot2.answer_callback_query(call.id, text=f"Quality selected: {quality}")
 
     # Now download the media with the selected quality
-    message = call.message
-    url = message.text  # The URL that was sent earlier
     if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        bot2.reply_to(call.message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
     try:
-        bot2.reply_to(message, "Downloading media, this may take some time...")
+        bot2.reply_to(call.message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -115,26 +117,30 @@ def handle_quality_selection(call):
 
             if file_path.lower().endswith('.mp4'):
                 with open(file_path, 'rb') as media:
-                    bot2.send_video(message.chat.id, media)
+                    bot2.send_video(call.message.chat.id, media)
             else:
                 with open(file_path, 'rb') as media:
                     if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
+                        bot2.send_photo(call.message.chat.id, media)
                     else:
-                        bot2.send_document(message.chat.id, media)
+                        bot2.send_document(call.message.chat.id, media)
 
             os.remove(file_path)
-            bot2.reply_to(message, "Download and sending completed successfully.")
+            bot2.reply_to(call.message, "Download and sending completed successfully.")
 
     except Exception as e:
-        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
+        bot2.reply_to(call.message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
-    send_quality_options(message)
+    if not is_valid_url(url):
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
+
+    send_quality_options(message, url)
 
 # Flask app setup
 app = Flask(__name__)
