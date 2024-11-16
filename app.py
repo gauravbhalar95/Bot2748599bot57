@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens from environment variables
-API_TOKEN = os.getenv('API_TOKEN')  # Make sure to set this in your environment
+API_TOKEN = os.getenv('API_TOKEN_2')  # Make sure to set this in your environment
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID with '@' like '@YourChannel'
 
 # Initialize the bot
