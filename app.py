@@ -26,8 +26,8 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Instagram credentials for login
-INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')
-INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
+INSTAGRAM_USERNAME = os.getenv('username')
+INSTAGRAM_PASSWORD = os.getenv('password')
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
