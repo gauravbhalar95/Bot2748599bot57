@@ -1,27 +1,32 @@
-# Use a base Python image
+# Use an official Python runtime as a parent image
 FROM python:3.10-slim
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV OUTPUT_DIR=/app/downloads
 
-# Install system dependencies and ensure ffmpeg is correctly linked
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
-    ln -sf /bin/ffmpeg /usr/bin/ffmpeg && \
+    apt-get install -y ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
-WORKDIR /app
-
-# Copy the application code
-COPY . .
-
 # Install Python dependencies
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port 8080
+# Copy the rest of the application code
+COPY . /app/
+
+# Create download directory
+RUN mkdir -p ${OUTPUT_DIR}
+
+# Expose port for Flask server
 EXPOSE 8080
 
-# Command to run the Flask application
+# Command to run your application
 CMD python app.py
