@@ -4,6 +4,7 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
+import instaloader
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from telebot import types
@@ -24,6 +25,10 @@ cookies_file = 'cookies.txt'  # YouTube cookies file
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
+# Instagram credentials for login
+INSTAGRAM_USERNAME = os.getenv('INSTAGRAM_USERNAME')
+INSTAGRAM_PASSWORD = os.getenv('INSTAGRAM_PASSWORD')
+
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -43,7 +48,7 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to fetch available formats
+# Function to fetch available formats for YouTube videos
 def get_available_formats(url):
     try:
         ydl_opts = {
@@ -60,29 +65,9 @@ def get_available_formats(url):
         logging.error(f"Error fetching available formats: {str(e)}")
         return []
 
-# Function to create inline buttons for quality selection
-def create_quality_buttons(formats):
-    buttons = []
-    selected_qualities = ['480p', '720p', '1080p', '2160p']  # Target resolutions
-
-    # Filter formats for the specified resolutions
-    for f in formats:
-        format_note = f.get('format_note', f.get('format'))
-        if any(q in format_note for q in selected_qualities):  # Match target resolutions
-            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
-
-    if not buttons:  # If no matches found, create buttons for all available formats
-        for f in formats:
-            format_note = f.get('format_note', f.get('format'))
-            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
-
-    keyboard = types.InlineKeyboardMarkup(row_width=2)
-    keyboard.add(*buttons)
-    return keyboard
-
-# Function to download media with selected format
-def download_media(url, format_code):
-    logging.debug(f"Downloading media from URL: {url} with format: {format_code}")
+# Function to download media from YouTube with selected format
+def download_youtube_media(url, format_code):
+    logging.debug(f"Downloading YouTube media from URL: {url} with format: {format_code}")
 
     ydl_opts = {
         'format': format_code,
@@ -115,34 +100,69 @@ def download_media(url, format_code):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download and send the media asynchronously
-def download_and_send(message, url, format_code):
-    if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
+# Function to download Instagram media using instaloader
+def download_instagram_media(url):
+    logging.debug(f"Downloading Instagram media from URL: {url}")
 
+    L = instaloader.Instaloader()
+    L.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)  # Login using Instagram credentials
+    post = instaloader.Post.from_url(L.context, url)
+
+    # Download the post (photo/video)
+    L.download_post(post, target=output_dir)
+
+    # Return the file path of the downloaded media
+    return os.path.join(output_dir, post.filename)
+
+# Function to create inline buttons for quality selection
+def create_quality_buttons(formats):
+    buttons = []
+    selected_qualities = ['480p', '720p', '1080p', '2160p']  # Target resolutions
+
+    # Filter formats for the specified resolutions
+    for f in formats:
+        format_note = f.get('format_note', f.get('format'))
+        # Check if the format contains any of the target resolutions
+        if any(q in format_note for q in selected_qualities):  # Match target resolutions
+            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
+
+    if not buttons:  # If no matches found, create buttons for all available formats
+        for f in formats:
+            format_note = f.get('format_note', f.get('format'))
+            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
+
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    keyboard.add(*buttons)
+    return keyboard
+
+# Function to download and send the media asynchronously
+def download_and_send(message, url, format_code, platform):
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, format_code)
-            file_path = future.result()
+        if platform == "youtube":
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future = executor.submit(download_youtube_media, url, format_code)
+                file_path = future.result()
+        elif platform == "instagram":
+            file_path = download_instagram_media(url)
 
-            logging.debug(f"Download completed, file path: {file_path}")
+        logging.debug(f"Download completed, file path: {file_path}")
 
-            if file_path.lower().endswith('.mp4'):
-                with open(file_path, 'rb') as media:
-                    bot2.send_video(message.chat.id, media)
-            else:
-                with open(file_path, 'rb') as media:
-                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
-                    else:
-                        bot2.send_document(message.chat.id, media)
+        # Send the downloaded media
+        if file_path.lower().endswith('.mp4'):
+            with open(file_path, 'rb') as media:
+                bot2.send_video(message.chat.id, media)
+        else:
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
 
-            os.remove(file_path)
-            bot2.reply_to(message, "Download and sending completed successfully.")
+        os.remove(file_path)
+        bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
@@ -157,51 +177,51 @@ def handle_links(message):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
-    # Fetch available formats for the video
-    formats = get_available_formats(url)
-    if formats:
-        bot2.reply_to(message, "Please select the video quality:", reply_markup=create_quality_buttons(formats))
-    else:
-        bot2.reply_to(message, "No available formats found.")
+    # Determine if the URL is from YouTube or Instagram
+    if "youtube.com" in url or "youtu.be" in url:
+        platform = "youtube"
+        formats = get_available_formats(url)
 
-# Function to handle inline button callback for quality selection
+        if not formats:
+            bot2.reply_to(message, "No video formats available for this URL.")
+            return
+
+        # Create the inline keyboard for video quality selection
+        keyboard = create_quality_buttons(formats)
+
+        # Ask user to choose the quality
+        bot2.reply_to(message, "Choose the video quality:", reply_markup=keyboard)
+    elif "instagram.com" in url:
+        platform = "instagram"
+        # Directly proceed to download Instagram media
+        download_and_send(message, url, None, platform)
+    else:
+        bot2.reply_to(message, "Unsupported URL. Please provide a YouTube or Instagram link.")
+        return
+
+# Function to handle user's quality selection for YouTube
 @bot2.callback_query_handler(func=lambda call: True)
 def handle_quality_selection(call):
-    quality = call.data
-    url = call.message.text.split('\n')[0]  # Extract URL from the message
-    formats = get_available_formats(url)
-    
-    # Find the format corresponding to the selected quality
-    selected_format = next((f for f in formats if f.get('format_note', f.get('format')) == quality), None)
-    
-    if not selected_format:
-        # If the selected quality is not found, try to select one of the common resolutions
-        selected_format = next(
-            (f for f in formats if any(q in f.get('format_note', f.get('format')) for q in ['480p', '720p', '1080p', '2160p'])),
-            None
-        )
+    format_code = call.data
+    url = call.message.text.split("\n")[-1]  # Extract URL from the message text
 
-    if selected_format:
-        bot2.answer_callback_query(call.id, text="Starting download...")
-        # Call download function with the selected format
-        download_and_send(call.message, url, selected_format['format'])
-    else:
-        bot2.answer_callback_query(call.id, text="Error: Suitable format not found.")
+    try:
+        # Download and send media
+        download_and_send(call.message, url, format_code, "youtube")
+    except Exception as e:
+        bot2.reply_to(call.message, f"An error occurred while downloading: {str(e)}")
+        logging.error(f"Error during download: {str(e)}")
 
-# Flask app setup
-app = Flask(__name__)
+# Start the bot
+if __name__ == '__main__':
+    # Set up Flask app to expose bot
+    app = Flask(__name__)
 
-# Flask routes for webhook handling
-@app.route('/' + API_TOKEN_2, methods=['POST'])
-def getMessage_bot2():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
+    @app.route(f'/{API_TOKEN_2}', methods=['POST'])
+    def webhook():
+        json_str = request.get_data().decode('UTF-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot2.process_new_updates([update])
+        return '!', 200
 
-@app.route('/')
-def webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(debug=True, port=5000)
