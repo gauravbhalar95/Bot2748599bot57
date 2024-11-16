@@ -133,7 +133,7 @@ def health_check():
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=os.getenv('WEBHOOK_URL') + '/' + API_TOKEN)
+    bot.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN)
     return "Webhook set", 200
 
 if __name__ == "__main__":
