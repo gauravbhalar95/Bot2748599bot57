@@ -9,8 +9,9 @@ from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens from environment variables
-API_TOKEN = os.getenv('API_TOKEN_2')  # Set this in your environment variables
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID (e.g., '@YourChannel')
+API_TOKEN = os.getenv('API_TOKEN_2')  # Make sure to set this in your environment
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID with '@' like '@YourChannel'
+WEBHOOK_URL = os.getenv('KOYEB_URL')  # Set this to your hosting URL
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -18,10 +19,11 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # Optional: Use for authenticated downloads
+cookies_file = 'cookies.txt'  # Optional: YouTube cookies file for auth
 
 # Ensure the downloads directory exists
-os.makedirs(output_dir, exist_ok=True)
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -51,7 +53,8 @@ def download_media(url, quality='best', username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',  # Quality selection
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
+        'merge_output_format': 'mp4',  # Ensure merging of video and audio streams
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{
@@ -71,6 +74,7 @@ def download_media(url, quality='best', username=None, password=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info_dict)
+
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
@@ -84,14 +88,12 @@ def download_and_send(message, url, quality):
 
         if os.path.exists(file_path):
             with open(file_path, 'rb') as media:
-                if file_path.lower().endswith('.mp4'):
-                    bot.send_video(message.chat.id, media)
-                else:
-                    bot.send_document(message.chat.id, media)
+                bot.send_video(message.chat.id, media) if file_path.lower().endswith('.mp4') else bot.send_document(message.chat.id, media)
             os.remove(file_path)
             bot.reply_to(message, "Download and sending completed successfully.")
         else:
             bot.reply_to(message, "Error: File not found after download.")
+
     except Exception as e:
         bot.reply_to(message, f"Failed to download. Error: {str(e)}")
 
@@ -133,8 +135,10 @@ def health_check():
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN)
-    return "Webhook set", 200
+    success = bot.set_webhook(url=f'{WEBHOOK_URL}/{API_TOKEN}')
+    if success:
+        return "Webhook set successfully", 200
+    return "Failed to set webhook", 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
