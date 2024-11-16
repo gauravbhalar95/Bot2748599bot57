@@ -45,28 +45,44 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Identify the platform based on the URL
+def identify_platform(url):
+    if 'instagram.com' in url:
+        return 'instagram'
+    elif 'twitter.com' in url:
+        return 'twitter'
+    elif 'facebook.com' in url:
+        return 'facebook'
+    elif 'pinterest.com' in url:
+        return 'pinterest'
+    else:
+        return 'unknown'
+
 # Function to download media
 def download_media(url, quality='best', username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
+    platform = identify_platform(url)
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
-        'merge_output_format': 'mp4',
+        'format': 'best',  # Set default to 'best' quality for all platforms
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,  # Use cookie file for YouTube authentication if needed
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-            'ffmpeg_location': '/bin/'  # Specify ffmpeg location
-        }],
         'retries': 5,
         'socket_timeout': 10,
         'user-agent': 'Mozilla/5.0'
     }
 
-    if username and password:
-        ydl_opts['username'] = username
-        ydl_opts['password'] = password
+    # Use different options based on the platform
+    if platform == 'instagram':
+        ydl_opts['extractor_args'] = {'instagram': {'username': username, 'password': password}}
+    elif platform == 'twitter':
+        ydl_opts['extractor_args'] = {'twitter': {'username': username, 'password': password}}
+    elif platform == 'facebook':
+        ydl_opts['cookies'] = cookies_file  # Example: use cookies for Facebook if needed
+    elif platform == 'pinterest':
+        ydl_opts['quiet'] = True  # Example: customize options for Pinterest if required
+    else:
+        logging.error("Unsupported platform.")
+        raise Exception("Unsupported platform. Only Instagram, Twitter, Facebook, and Pinterest URLs are supported.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -126,15 +142,18 @@ def download_and_send(message, url, quality='best', username=None, password=None
 def handle_links(message):
     url = message.text.strip()
 
-    username = None
-    password = None
-    if "@" in url:
-        username, password = url.split('@', 1)
-        url = password
+    if not is_valid_url(url):
+        bot.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
+
+    platform = identify_platform(url)
+    if platform == 'unknown':
+        bot.reply_to(message, "Unsupported platform. Please provide a URL from Instagram, Twitter, Facebook, or Pinterest.")
+        return
 
     markup = InlineKeyboardMarkup()
     for quality in ['480', '720', '1080', '2160']:
-        markup.add(InlineKeyboardButton(text=f"{quality}p", callback_data=f"{url}|{quality}|{username}|{password}"))
+        markup.add(InlineKeyboardButton(text=f"{quality}p", callback_data=f"{url}|{quality}|None|None"))
 
     bot.reply_to(message, "Select the quality for download:", reply_markup=markup)
 
