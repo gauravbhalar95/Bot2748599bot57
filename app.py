@@ -9,8 +9,7 @@ from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens from environment variables
-API_TOKEN = os.getenv('API_TOKEN_2')  # Make sure to set this in your environment
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID with '@' like '@YourChannel'
+API_TOKEN = os.getenv('API_TOKEN_2')  # Set this in your environment
 WEBHOOK_URL = os.getenv('KOYEB_URL')  # Set this to your hosting URL
 
 # Initialize the bot
@@ -19,9 +18,6 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # Optional: YouTube cookies file for auth
-
-# Ensure the downloads directory exists
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -49,26 +45,22 @@ def is_valid_url(url):
         return False
 
 # Function to download media with selected quality
-def download_media(url, quality='best', username=None, password=None):
+def download_media(url, quality='best'):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
         'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
-        'merge_output_format': 'mp4',  # Ensure merging of video and audio streams
+        'merge_output_format': 'mp4',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
+            'ffmpeg_location': '/bin/'  # Specify ffmpeg location
         }],
         'retries': 5,
         'socket_timeout': 10,
         'user-agent': 'Mozilla/5.0'
     }
-
-    if username and password:
-        ydl_opts['username'] = username
-        ydl_opts['password'] = password
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -93,7 +85,6 @@ def download_and_send(message, url, quality):
             bot.reply_to(message, "Download and sending completed successfully.")
         else:
             bot.reply_to(message, "Error: File not found after download.")
-
     except Exception as e:
         bot.reply_to(message, f"Failed to download. Error: {str(e)}")
 
