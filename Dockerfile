@@ -10,7 +10,7 @@ COPY requirements.txt .
 # Install dependencies and move ffmpeg to /bin
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
-    mv /usr/bin/ffmpeg /bin/ && \
+    mv /bin/ffmpeg /bin/ && \
     pip install --no-cache-dir -r requirements.txt && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
