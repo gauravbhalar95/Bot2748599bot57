@@ -63,9 +63,19 @@ def get_available_formats(url):
 # Function to create inline buttons for quality selection
 def create_quality_buttons(formats):
     buttons = []
+    selected_qualities = ['480p', '720p', '1080p', '2160p']  # Target resolutions
+
+    # Filter formats for the specified resolutions
     for f in formats:
-        quality = f.get('format_note', f.get('format'))  # Using 'format_note' or 'format' as the label
-        buttons.append(types.InlineKeyboardButton(quality, callback_data=quality))
+        format_note = f.get('format_note', f.get('format'))
+        if any(q in format_note for q in selected_qualities):  # Match target resolutions
+            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
+
+    if not buttons:  # If no matches found, create buttons for all available formats
+        for f in formats:
+            format_note = f.get('format_note', f.get('format'))
+            buttons.append(types.InlineKeyboardButton(format_note, callback_data=format_note))
+
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.add(*buttons)
     return keyboard
@@ -164,12 +174,19 @@ def handle_quality_selection(call):
     # Find the format corresponding to the selected quality
     selected_format = next((f for f in formats if f.get('format_note', f.get('format')) == quality), None)
     
+    if not selected_format:
+        # If the selected quality is not found, try to select one of the common resolutions
+        selected_format = next(
+            (f for f in formats if any(q in f.get('format_note', f.get('format')) for q in ['480p', '720p', '1080p', '2160p'])),
+            None
+        )
+
     if selected_format:
         bot2.answer_callback_query(call.id, text="Starting download...")
         # Call download function with the selected format
         download_and_send(call.message, url, selected_format['format'])
     else:
-        bot2.answer_callback_query(call.id, text="Error: Format not found.")
+        bot2.answer_callback_query(call.id, text="Error: Suitable format not found.")
 
 # Flask app setup
 app = Flask(__name__)
