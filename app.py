@@ -6,6 +6,7 @@ import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -29,11 +30,6 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
-    import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
-    return filename.strip()[:max_length]
-
 # Function to validate URLs
 def is_valid_url(url):
     try:
@@ -42,60 +38,52 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media
-def download_media(url, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url}")
+# Function to create an inline keyboard for resolution selection
+def create_resolution_keyboard():
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(
+        InlineKeyboardButton("480p", callback_data="480"),
+        InlineKeyboardButton("720p", callback_data="720"),
+        InlineKeyboardButton("1080p", callback_data="1080"),
+        InlineKeyboardButton("2160p (4K)", callback_data="2160")
+    )
+    return keyboard
 
-    # Set up options for yt-dlp with filename sanitization
+# Function to handle resolution selection
+@bot2.callback_query_handler(func=lambda call: True)
+def handle_resolution_selection(call):
+    resolution = call.data
+    message = call.message
+    url = message.reply_to_message.text  # Retrieve the original URL from the message
+
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'format': f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
+        'retries': 5,
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
-    if username and password:
-        ydl_opts['username'] = username
-        ydl_opts['password'] = password
+    bot2.send_message(call.message.chat.id, f"Downloading in {resolution}p... Please wait.")
+    threading.Thread(target=download_and_send, args=(message, url, None, None, ydl_opts)).start()
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-
-        if not os.path.exists(file_path):
-            part_file_path = f"{file_path}.part"
-            if os.path.exists(part_file_path):
-                os.rename(part_file_path, file_path)
-                logging.debug(f"Renamed partial file: {part_file_path} to {file_path}")
-            else:
-                logging.error(f"Downloaded file not found at path: {file_path}")
-                raise Exception("Download failed: File not found after download.")
-
-        return file_path
-
-    except Exception as e:
-        logging.error(f"yt-dlp download error: {str(e)}")
-        raise
-
-# Function to download media and send it asynchronously
-def download_and_send(message, url, username=None, password=None):
+# Modified download_and_send function to accept ydl_opts as parameter
+def download_and_send(message, url, username=None, password=None, ydl_opts=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
     try:
-        bot2.reply_to(message, "Downloading media, this may take some time...")
+        bot2.reply_to(message, "Preparing download options...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password)
+            future = executor.submit(download_media, url, username, password, ydl_opts)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -117,33 +105,19 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
+# Updated handle_links function to show the inline keyboard
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
 
-    username = None
-    password = None
-    if "@" in url:
-        username, password = url.split('@', 1)
-        url = password
+    if is_valid_url(url):
+        bot2.reply_to(message, "Please select the resolution:", reply_markup=create_resolution_keyboard())
+    else:
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
 
-    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
-
-# Flask app setup
+# Flask app setup (same as before)
 app = Flask(__name__)
 
-# Flask routes for webhook handling
-@app.route('/' + API_TOKEN_2, methods=['POST'])
-def getMessage_bot2():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
-
-@app.route('/')
-def webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
-
+# Flask routes for webhook handling (same as before)
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
