@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens from environment variables
-API_TOKEN = os.getenv('API_TOKEN_2')  # Make sure to set this in your environment
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID with '@' like '@YourChannel'
+API_TOKEN = os.getenv('API_TOKEN_2')  # Set this in your environment variables
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID (e.g., '@YourChannel')
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -18,11 +18,10 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # Optional: YouTube cookies file for auth
+cookies_file = 'cookies.txt'  # Optional: Use for authenticated downloads
 
 # Ensure the downloads directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+os.makedirs(output_dir, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -52,7 +51,7 @@ def download_media(url, quality='best', username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',  # Quality format
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',  # Quality selection
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{
@@ -72,7 +71,6 @@ def download_media(url, quality='best', username=None, password=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info_dict)
-
     except Exception as e:
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
@@ -83,15 +81,17 @@ def download_and_send(message, url, quality):
         bot.reply_to(message, f"Downloading in {quality}p quality. This may take some time...")
         with ThreadPoolExecutor(max_workers=3) as executor:
             file_path = executor.submit(download_media, url, quality).result()
-        
+
         if os.path.exists(file_path):
             with open(file_path, 'rb') as media:
-                bot.send_video(message.chat.id, media) if file_path.lower().endswith('.mp4') else bot.send_document(message.chat.id, media)
+                if file_path.lower().endswith('.mp4'):
+                    bot.send_video(message.chat.id, media)
+                else:
+                    bot.send_document(message.chat.id, media)
             os.remove(file_path)
             bot.reply_to(message, "Download and sending completed successfully.")
         else:
             bot.reply_to(message, "Error: File not found after download.")
-
     except Exception as e:
         bot.reply_to(message, f"Failed to download. Error: {str(e)}")
 
