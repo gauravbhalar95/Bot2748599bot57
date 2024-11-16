@@ -8,29 +8,38 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Load API tokens and channel IDs from environment variables
-API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
+# Load API tokens from environment variables
+API_TOKEN = os.getenv('API_TOKEN')  # Make sure to set this in your environment
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Optional: Channel ID with '@' like '@YourChannel'
 
-# Initialize the bot with debug mode enabled
-bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
+# Initialize the bot
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # YouTube cookies file
+cookies_file = 'cookies.txt'  # Optional: YouTube cookies file for auth
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-# Enable debug logging
+# Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Ensure yt-dlp is updated
+# Ensure yt-dlp is up to date
 os.system('yt-dlp -U')
 
-# Function to validate URLs
+# Flask app setup
+app = Flask(__name__)
+
+# Function to sanitize filenames
+def sanitize_filename(filename, max_length=250):
+    import re
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
+
+# Validate URLs
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -38,86 +47,94 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to create an inline keyboard for resolution selection
-def create_resolution_keyboard():
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(
-        InlineKeyboardButton("480p", callback_data="480"),
-        InlineKeyboardButton("720p", callback_data="720"),
-        InlineKeyboardButton("1080p", callback_data="1080"),
-        InlineKeyboardButton("2160p (4K)", callback_data="2160")
-    )
-    return keyboard
-
-# Function to handle resolution selection
-@bot2.callback_query_handler(func=lambda call: True)
-def handle_resolution_selection(call):
-    resolution = call.data
-    message = call.message
-    url = message.reply_to_message.text  # Retrieve the original URL from the message
+# Function to download media with selected quality
+def download_media(url, quality='best', username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url}")
 
     ydl_opts = {
-        'format': f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]',
+        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',  # Quality format
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'socket_timeout': 10,
         'retries': 5,
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
+        'socket_timeout': 10,
+        'user-agent': 'Mozilla/5.0'
     }
 
-    bot2.send_message(call.message.chat.id, f"Downloading in {resolution}p... Please wait.")
-    threading.Thread(target=download_and_send, args=(message, url, None, None, ydl_opts)).start()
-
-# Modified download_and_send function to accept ydl_opts as parameter
-def download_and_send(message, url, username=None, password=None, ydl_opts=None):
-    if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
 
     try:
-        bot2.reply_to(message, "Preparing download options...")
-        logging.debug("Initiating media download")
-
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password, ydl_opts)
-            file_path = future.result()
-
-            logging.debug(f"Download completed, file path: {file_path}")
-
-            if file_path.lower().endswith('.mp4'):
-                with open(file_path, 'rb') as media:
-                    bot2.send_video(message.chat.id, media)
-            else:
-                with open(file_path, 'rb') as media:
-                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
-                    else:
-                        bot2.send_document(message.chat.id, media)
-
-            os.remove(file_path)
-            bot2.reply_to(message, "Download and sending completed successfully.")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info_dict)
 
     except Exception as e:
-        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
-        logging.error(f"Download failed: {e}")
+        logging.error(f"yt-dlp download error: {str(e)}")
+        raise
 
-# Updated handle_links function to show the inline keyboard
-@bot2.message_handler(func=lambda message: True)
+# Handle quality selection and initiate download
+def download_and_send(message, url, quality):
+    try:
+        bot.reply_to(message, f"Downloading in {quality}p quality. This may take some time...")
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            file_path = executor.submit(download_media, url, quality).result()
+        
+        if os.path.exists(file_path):
+            with open(file_path, 'rb') as media:
+                bot.send_video(message.chat.id, media) if file_path.lower().endswith('.mp4') else bot.send_document(message.chat.id, media)
+            os.remove(file_path)
+            bot.reply_to(message, "Download and sending completed successfully.")
+        else:
+            bot.reply_to(message, "Error: File not found after download.")
+
+    except Exception as e:
+        bot.reply_to(message, f"Failed to download. Error: {str(e)}")
+
+# Handle incoming messages
+@bot.message_handler(func=lambda message: True)
 def handle_links(message):
-    url = message.text
+    url = message.text.strip()
+    if not is_valid_url(url):
+        bot.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
 
-    if is_valid_url(url):
-        bot2.reply_to(message, "Please select the resolution:", reply_markup=create_resolution_keyboard())
-    else:
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+    markup = InlineKeyboardMarkup()
+    for quality in ['480', '720', '1080', '2160']:
+        markup.add(InlineKeyboardButton(text=f"{quality}p", callback_data=f"{url}|{quality}"))
 
-# Flask app setup (same as before)
-app = Flask(__name__)
+    bot.reply_to(message, "Select the quality for download:", reply_markup=markup)
 
-# Flask routes for webhook handling (same as before)
+# Handle inline button presses
+@bot.callback_query_handler(func=lambda call: True)
+def handle_quality_selection(call):
+    try:
+        url, quality = call.data.split('|')
+        threading.Thread(target=download_and_send, args=(call.message, url, quality)).start()
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"Error: {str(e)}")
+
+# Flask route to handle webhook updates
+@app.route(f'/{API_TOKEN}', methods=['POST'])
+def webhook_update():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "!", 200
+
+# Health check route
+@app.route('/health')
+def health_check():
+    return "OK", 200
+
+# Flask app startup
+@app.route('/')
+def set_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=os.getenv('WEBHOOK_URL') + '/' + API_TOKEN)
+    return "Webhook set", 200
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
