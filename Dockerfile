@@ -7,9 +7,10 @@ WORKDIR /app
 # Copy the requirements file
 COPY requirements.txt .
 
-# Install dependencies
+# Install dependencies and move ffmpeg to /bin
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
+    mv /usr/bin/ffmpeg /bin/ && \
     pip install --no-cache-dir -r requirements.txt && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
