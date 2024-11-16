@@ -1,24 +1,27 @@
-# Start with a base image
-FROM ubuntu:latest
+# Use a base Python image
+FROM python:3.10-slim
 
-# Install ffmpeg and move it to /bin if necessary
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies and ensure ffmpeg is correctly linked
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
-    if [ ! -f /bin/ffmpeg ]; then mv /usr/bin/ffmpeg /bin/; fi && \
+    ln -sf /bin/ffmpeg /usr/bin/ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Verify ffmpeg installation (optional)
-RUN /bin/ffmpeg -version
 
 # Set the working directory
 WORKDIR /app
 
-# Copy your application code (replace this with your actual files)
-COPY . /app
+# Copy the application code
+COPY . .
 
-# Install dependencies (modify as needed based on your application)
-# RUN pip install -r requirements.txt  # Example for Python projects
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Specify the entry point (modify this based on your app)
-# ENTRYPOINT ["python", "app.py"]      # Example for Python projects
+# Expose port 8080
+EXPOSE 8080
+
+# Command to run the Flask application
+CMD python app.py
