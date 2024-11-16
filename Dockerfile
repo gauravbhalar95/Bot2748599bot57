@@ -1,25 +1,24 @@
-# Use a base image with Python and add ffmpeg installation
-FROM python:3.9-slim
+# Start with a base image
+FROM ubuntu:latest
 
-# Set the working directory in the container
-WORKDIR /app
-
-# Install ffmpeg and move it to /bin
+# Install ffmpeg and move it to /bin if necessary
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
-    mv /usr/bin/ffmpeg /bin/ && \
+    if [ ! -f /bin/ffmpeg ]; then mv /usr/bin/ffmpeg /bin/; fi && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Verify ffmpeg installation (optional)
+RUN /bin/ffmpeg -version
 
-# Copy the application files
-COPY . .
+# Set the working directory
+WORKDIR /app
 
-# Expose the port (if applicable)
-EXPOSE 8080
+# Copy your application code (replace this with your actual files)
+COPY . /app
 
-# Command to run the application
-CMD ["python", "app.py"]
+# Install dependencies (modify as needed based on your application)
+# RUN pip install -r requirements.txt  # Example for Python projects
+
+# Specify the entry point (modify this based on your app)
+# ENTRYPOINT ["python", "app.py"]      # Example for Python projects
