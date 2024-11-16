@@ -55,6 +55,8 @@ def identify_platform(url):
         return 'facebook'
     elif 'pinterest.com' in url:
         return 'pinterest'
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        return 'youtube'
     else:
         return 'unknown'
 
@@ -64,7 +66,7 @@ def download_media(url, quality='best', username=None, password=None):
 
     platform = identify_platform(url)
     ydl_opts = {
-        'format': 'best',  # Set default to 'best' quality for all platforms
+        'format': f'bestvideo[height<={quality}]' if quality != 'best' else 'best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'retries': 5,
         'socket_timeout': 10,
@@ -80,9 +82,11 @@ def download_media(url, quality='best', username=None, password=None):
         ydl_opts['cookies'] = cookies_file  # Example: use cookies for Facebook if needed
     elif platform == 'pinterest':
         ydl_opts['quiet'] = True  # Example: customize options for Pinterest if required
+    elif platform == 'youtube':
+        ydl_opts['format'] = f'bestvideo[height<={quality}]' if quality != 'best' else 'bestvideo+bestaudio/best'
     else:
         logging.error("Unsupported platform.")
-        raise Exception("Unsupported platform. Only Instagram, Twitter, Facebook, and Pinterest URLs are supported.")
+        raise Exception("Unsupported platform. Only Instagram, Twitter, Facebook, Pinterest, and YouTube URLs are supported.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -148,7 +152,7 @@ def handle_links(message):
 
     platform = identify_platform(url)
     if platform == 'unknown':
-        bot.reply_to(message, "Unsupported platform. Please provide a URL from Instagram, Twitter, Facebook, or Pinterest.")
+        bot.reply_to(message, "Unsupported platform. Please provide a URL from Instagram, Twitter, Facebook, Pinterest, or YouTube.")
         return
 
     markup = InlineKeyboardMarkup()
