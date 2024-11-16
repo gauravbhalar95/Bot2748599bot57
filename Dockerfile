@@ -1,25 +1,25 @@
-# Use the official Python 3.9 slim image as a base image
+# Use a base image with Python and add ffmpeg installation
 FROM python:3.9-slim
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file
-COPY requirements.txt .
-
-# Install dependencies and move ffmpeg to /bin
+# Install ffmpeg and move it to /bin
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
-    mv /bin/ffmpeg /bin/ && \
-    pip install --no-cache-dir -r requirements.txt && \
+    mv /usr/bin/ffmpeg /bin/ && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application code
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application files
 COPY . .
 
-# Expose the port the app runs on (if applicable, you can change the port number)
-EXPOSE 8000
+# Expose the port (if applicable)
+EXPOSE 8080
 
 # Command to run the application
-CMD python app.py
+CMD ["python", "app.py"]
