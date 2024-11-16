@@ -1,27 +1,24 @@
-# Use an official Python runtime as a parent image
+# Use the official Python 3.9 slim image as a base image
 FROM python:3.9-slim
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
+# Copy the requirements file
+COPY requirements.txt .
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the rest of the application code
 COPY . .
 
-# Install dependencies from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Expose the port the app runs on (if applicable, you can change the port number)
+EXPOSE 8000
 
-# Install necessary tools and download ffmpeg to /bin
-RUN apt-get update && apt-get install -y wget \
-    && wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-i686-static.tar.xz \
-    && tar -xJf ffmpeg-release-i686-static.tar.xz \
-    && mv ffmpeg-*/ffmpeg /bin/ffmpeg \
-    && mv ffmpeg-*/ffprobe /bin/ffprobe \
-    && chmod +x /bin/ffmpeg /bin/ffprobe \
-    && rm -rf ffmpeg-* ffmpeg-release-i686-static.tar.xz \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Expose port 8080 for the Flask app
-EXPOSE 8080
-
-# Run app.py when the container launches
+# Command to run the application
 CMD python app.py
