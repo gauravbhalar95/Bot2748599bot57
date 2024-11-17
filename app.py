@@ -4,8 +4,8 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-from concurrent.futures import ThreadPoolExecutor
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Function to sanitize filenames
+# Sanitize filenames to avoid issues
 def sanitize_filename(filename, max_length=250):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
@@ -44,36 +44,37 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to fetch available video qualities
-def get_available_qualities(url):
+# Function to fetch available formats using yt-dlp
+def fetch_available_formats(url):
+    ydl_opts = {
+        'quiet': True,
+        'extract_flat': True
+    }
+    formats = []
     try:
-        ydl_opts = {'quiet': True, 'format': 'bestvideo'}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             formats = info_dict.get('formats', [])
-            qualities = {int(fmt['height']): fmt for fmt in formats if fmt.get('vcodec') != 'none'}
-            return sorted(qualities.keys(), reverse=True)
     except Exception as e:
-        logging.error(f"Error fetching qualities: {e}")
-        return []
+        logging.error(f"Failed to fetch formats: {e}")
+    return formats
 
-# Function to download media
-def download_media(url, quality=None, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url} with quality: {quality if quality else 'default'}")
-    
+# Function to start downloading the video
+def download_media(url, quality):
+    logging.debug(f"Attempting to download media from URL: {url}")
+
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]' if quality else 'best[ext=mp4]/best',
+        'format': quality,  # Choose selected format
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
         'socket_timeout': 10,
         'retries': 5,
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
-
-    if username and password:
-        ydl_opts['username'] = username
-        ydl_opts['password'] = password
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -95,25 +96,24 @@ def download_media(url, quality=None, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to handle download and send
-def download_and_send(message, url, quality=None, username=None, password=None):
+# Function to send media after download
+def download_and_send(message, url, quality):
+    if not is_valid_url(url):
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        return
+
     try:
         bot2.reply_to(message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality, username, password)
+            future = executor.submit(download_media, url, quality)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
 
             with open(file_path, 'rb') as media:
-                if file_path.lower().endswith('.mp4'):
-                    bot2.send_video(message.chat.id, media)
-                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    bot2.send_photo(message.chat.id, media)
-                else:
-                    bot2.send_document(message.chat.id, media)
+                bot2.send_video(message.chat.id, media)
 
             os.remove(file_path)
             bot2.reply_to(message, "Download and sending completed successfully.")
@@ -122,43 +122,49 @@ def download_and_send(message, url, quality=None, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Handle messages to fetch available qualities
+# Function to handle message and show available video qualities
 @bot2.message_handler(func=lambda message: True)
-def handle_links(message):
-    url = message.text.strip()
+def handle_links_with_quality(message):
+    url = message.text
 
+    # Validate URL
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
-    available_qualities = get_available_qualities(url)
-    if not available_qualities:
-        download_and_send(message, url)
+    # Fetch available qualities
+    formats = fetch_available_formats(url)
+    if not formats:
+        bot2.reply_to(message, "Could not retrieve available qualities.")
         return
 
-    markup = InlineKeyboardMarkup()
-    for quality in available_qualities:
-        callback_data = f"{quality}:{url}"
-        markup.add(InlineKeyboardButton(f"{quality}p", callback_data=callback_data))
+    # Create inline buttons for each available quality
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    for format in formats:
+        if 'format_note' in format and 'url' in format:
+            quality = format['format_note']
+            quality_button = InlineKeyboardButton(f"{quality}", callback_data=f"{url}|{format['format_id']}")
+            keyboard.add(quality_button)
 
-    bot2.reply_to(message, "Select a quality for download:", reply_markup=markup)
+    bot2.reply_to(message, "Choose video quality:", reply_markup=keyboard)
 
-# Handle inline button callbacks
+# Function to handle quality selection and download
 @bot2.callback_query_handler(func=lambda call: True)
 def handle_quality_selection(call):
-    try:
-        data_parts = call.data.split(':')
-        selected_quality = int(data_parts[0])
-        url = data_parts[1]
-        bot2.answer_callback_query(call.id, f"Selected {selected_quality}p. Downloading...")
-        download_and_send(call.message, url, selected_quality)
-    except Exception as e:
-        bot2.send_message(call.message.chat.id, f"Error handling selection: {str(e)}")
-        logging.error(f"Callback data error: {e}")
+    url, format_id = call.data.split('|')
+    bot2.answer_callback_query(call.id, "Quality selected, starting download...")
+
+    formats = fetch_available_formats(url)
+    for format in formats:
+        if format['format_id'] == format_id:
+            quality = format['format_id']
+            download_and_send(call.message, url, quality)
+            break
 
 # Flask app setup
 app = Flask(__name__)
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
