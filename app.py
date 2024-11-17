@@ -43,13 +43,38 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media based on the selected quality
-def download_media(url, quality='720p', username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
+# Function to extract available video formats and options
+def get_available_formats(url):
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'force_generic_extractor': True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            formats = info_dict.get('formats', [])
+            available_qualities = {}
+
+            for fmt in formats:
+                if fmt.get('ext') == 'mp4':
+                    quality = fmt.get('height')
+                    if quality:
+                        available_qualities[quality] = fmt.get('url')
+
+            return available_qualities
+
+    except Exception as e:
+        logging.error(f"Error extracting video formats: {str(e)}")
+        return {}
+
+# Function to download media
+def download_media(url, quality, username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url} at quality: {quality}")
 
     # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': f'best[height<={quality.split("p")[0]}][ext=mp4]/best',  # Select video with height <= quality
+        'format': f'best[height={quality}]/best',  # Select the best quality of the specified height
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -92,7 +117,7 @@ def download_and_send_telegram(message, url, quality, username=None, password=No
         return
 
     try:
-        bot2.reply_to(message, "Downloading media, this may take some time...")
+        bot2.reply_to(message, f"Downloading media at {quality}p quality, this may take some time...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -123,31 +148,41 @@ def download_and_send_telegram(message, url, quality, username=None, password=No
 def handle_telegram_links(message):
     url = message.text
 
+    # First, get the available formats
+    available_qualities = get_available_formats(url)
+
+    if not available_qualities:
+        bot2.reply_to(message, "No available video qualities found.")
+        return
+
+    # Show quality options to the user
+    quality_options = "\n".join([f"{quality}p" for quality in available_qualities.keys()])
+    bot2.reply_to(message, f"Available video qualities:\n{quality_options}\n\nPlease choose a quality to download (e.g., 360p, 480p, 720p, etc.).")
+
+    # Store the URL and available qualities for later processing
+    bot2.register_next_step_handler(message, process_quality_selection, url, available_qualities)
+
+def process_quality_selection(message, url, available_qualities):
+    # Retrieve the quality selected by the user
+    selected_quality = message.text.strip()
+
+    # Validate the selected quality
+    try:
+        quality = int(selected_quality.replace('p', ''))
+        if quality not in available_qualities:
+            raise ValueError("Invalid quality selected.")
+    except ValueError:
+        bot2.reply_to(message, "Please select a valid quality from the available options.")
+        return
+
+    # Proceed to download and send the video
     username = None
     password = None
     if "@" in url:
         username, password = url.split('@', 1)
         url = password
 
-    # Ask user for quality option
-    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
-    markup.add('360p', '480p', '720p', '1080p', '2160p')
-    bot2.reply_to(message, "Please choose the video quality:", reply_markup=markup)
-    
-    # Store the URL and wait for the user's quality selection
-    bot2.register_next_step_handler(message, process_quality_selection, url, username, password)
-
-def process_quality_selection(message, url, username, password):
-    quality = message.text.strip()
-
-    # Validate the selected quality
-    valid_qualities = ['360p', '480p', '720p', '1080p', '2160p']
-    if quality not in valid_qualities:
-        bot2.reply_to(message, "Invalid quality. Please choose a valid quality.")
-        return
-
-    # Proceed with download and send
-    download_and_send_telegram(message, url, quality, username, password)
+    threading.Thread(target=download_and_send_telegram, args=(message, url, quality, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
