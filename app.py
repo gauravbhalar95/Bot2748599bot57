@@ -29,34 +29,34 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-def sanitize_filename(filename, max_length=250):
-    """Sanitize filenames to avoid invalid characters."""
+def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
+# Function to validate URLs
 def is_valid_url(url):
-    """Validate URLs."""
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
 
-def download_media(url, username=None, password=None, quality='best'):
-    """Download media using yt-dlp."""
-    logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
+# Function to download media
+def download_media(url, username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url}")
 
+    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,
+        'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
@@ -84,18 +84,18 @@ def download_media(url, username=None, password=None, quality='best'):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-def download_and_send(message, url, username=None, password=None, quality='best'):
-    """Download and send media asynchronously."""
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
     try:
-        bot2.reply_to(message, f"Downloading media in {quality}p quality, this may take some time...")
+        bot2.reply_to(message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password, quality)
+            future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -117,34 +117,9 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-@bot2.message_handler(commands=['start'])
-def send_welcome(message):
-    """Handle /start command to send a welcome message."""
-    bot2.reply_to(message, "Welcome! Send me a URL to download media or use commands to get started.")
-
-@bot2.callback_query_handler(func=lambda call: call.data.startswith('quality'))
-def callback_quality_selection(call):
-    """Handle quality selection from inline buttons."""
-    try:
-        logging.debug(f"Received callback data: {call.data}")
-        
-        data_parts = call.data.split(':')
-        if len(data_parts) != 3:
-            raise ValueError("Invalid callback data format. Expected exactly 3 parts.")
-        
-        _, quality, url = data_parts
-
-        bot2.answer_callback_query(call.id, f"Selected quality: {quality}p")
-        bot2.send_message(call.message.chat.id, f"Downloading media in {quality}p quality. This may take some time...")
-        
-        threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
-    except Exception as e:
-        bot2.send_message(call.message.chat.id, f"Error processing callback: {str(e)}")
-        logging.error(f"Callback processing error: {e}")
-
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    """Handle incoming messages and parse URLs."""
     url = message.text
 
     username = None
@@ -158,15 +133,14 @@ def handle_links(message):
 # Flask app setup
 app = Flask(__name__)
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
-    """Webhook route to handle Telegram updates."""
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
 @app.route('/')
 def webhook():
-    """Set the webhook."""
     bot2.remove_webhook()
     bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
