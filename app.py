@@ -1,28 +1,20 @@
 import os
 import logging
 import threading
-import discord
-from discord.ext import commands
-from flask import Flask, request
 import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
+from flask import Flask, request
 import asyncio
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Telegram Channel ID with @ like '@YourChannel'
 
 # Initialize the Telegram bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 telebot.logger.setLevel(logging.DEBUG)
-
-# Initialize the Discord bot
-intents = discord.Intents.default()
-intents.messages = True
-discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
@@ -51,13 +43,13 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media
-def download_media(url, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url}")
+# Function to download media based on the selected quality
+def download_media(url, quality='720p', username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
 
     # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'format': f'best[height<={quality.split("p")[0]}][ext=mp4]/best',  # Select video with height <= quality
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -94,7 +86,7 @@ def download_media(url, username=None, password=None):
         raise
 
 # Function to download media and send it asynchronously to Telegram
-def download_and_send_telegram(message, url, username=None, password=None):
+def download_and_send_telegram(message, url, quality, username=None, password=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -104,7 +96,7 @@ def download_and_send_telegram(message, url, username=None, password=None):
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password)
+            future = executor.submit(download_media, url, quality, username, password)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -126,37 +118,6 @@ def download_and_send_telegram(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to download media and send it asynchronously to Discord
-async def download_and_send_discord(ctx, url, username=None, password=None):
-    if not is_valid_url(url):
-        await ctx.send("The provided URL is not valid. Please enter a valid URL.")
-        return
-
-    try:
-        await ctx.send("Downloading media, this may take some time...")
-        logging.debug("Initiating media download")
-
-        file_path = download_media(url, username, password)
-
-        logging.debug(f"Download completed, file path: {file_path}")
-
-        if file_path.lower().endswith('.mp4'):
-            with open(file_path, 'rb') as media:
-                await ctx.send(file=discord.File(media))
-        else:
-            with open(file_path, 'rb') as media:
-                if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    await ctx.send(file=discord.File(media))
-                else:
-                    await ctx.send(file=discord.File(media))
-
-        os.remove(file_path)
-        await ctx.send("Download and sending completed successfully.")
-
-    except Exception as e:
-        await ctx.send(f"Failed to download. Error: {str(e)}")
-        logging.error(f"Download failed: {e}")
-
 # Function to handle messages from Telegram
 @bot2.message_handler(func=lambda message: True)
 def handle_telegram_links(message):
@@ -168,16 +129,25 @@ def handle_telegram_links(message):
         username, password = url.split('@', 1)
         url = password
 
-    threading.Thread(target=download_and_send_telegram, args=(message, url, username, password)).start()
+    # Ask user for quality option
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
+    markup.add('360p', '480p', '720p', '1080p', '2160p')
+    bot2.reply_to(message, "Please choose the video quality:", reply_markup=markup)
+    
+    # Store the URL and wait for the user's quality selection
+    bot2.register_next_step_handler(message, process_quality_selection, url, username, password)
 
-# Discord bot command to download media
-@discord_bot.command()
-async def download(ctx, url: str):
-    username = password = None
-    if "@" in url:
-        username, password = url.split('@', 1)
-        url = password
-    await download_and_send_discord(ctx, url, username, password)
+def process_quality_selection(message, url, username, password):
+    quality = message.text.strip()
+
+    # Validate the selected quality
+    valid_qualities = ['360p', '480p', '720p', '1080p', '2160p']
+    if quality not in valid_qualities:
+        bot2.reply_to(message, "Invalid quality. Please choose a valid quality.")
+        return
+
+    # Proceed with download and send
+    download_and_send_telegram(message, url, quality, username, password)
 
 # Flask app setup
 app = Flask(__name__)
@@ -194,11 +164,10 @@ def webhook():
     bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
 
-# Run both bots concurrently
-async def run_bots():
+# Run the bot
+async def run_bot():
     loop = asyncio.get_event_loop()
-    loop.create_task(discord_bot.start(DISCORD_TOKEN))
     app.run(host='0.0.0.0', port=8080, debug=True)
 
 if __name__ == "__main__":
-    asyncio.run(run_bots())
+    asyncio.run(run_bot())
