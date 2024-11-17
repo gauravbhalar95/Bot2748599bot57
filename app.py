@@ -6,6 +6,7 @@ import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -29,7 +30,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
+def sanitize_filename(filename, max_length=250):
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
@@ -42,13 +43,13 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media
-def download_media(url, quality='best'):
+# Function to download media with specified quality
+def download_media(url, quality='best', username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
 
-    # Set up options for yt-dlp with filename sanitization
+    # Set up options for yt-dlp
     ydl_opts = {
-        'format': f'{quality}[ext=mp4]/best',  # Use selected quality
+        'format': f'{quality}[ext=mp4]/bestvideo+bestaudio/best',  # Select the specified quality or best
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -56,9 +57,13 @@ def download_media(url, quality='best'):
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
+        'retries': 5,
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
+
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -80,67 +85,63 @@ def download_media(url, quality='best'):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to send quality options inline button
-def send_quality_options(message, url):
-    markup = telebot.types.InlineKeyboardMarkup()
-    btn_720p = telebot.types.InlineKeyboardButton("720p", callback_data=f'quality_720p_{url}')
-    btn_1080p = telebot.types.InlineKeyboardButton("1080p", callback_data=f'quality_1080p_{url}')
-    btn_best = telebot.types.InlineKeyboardButton("Best Quality", callback_data=f'quality_best_{url}')
-
-    markup.add(btn_720p, btn_1080p, btn_best)
-    bot2.send_message(message.chat.id, "Please choose the quality for the video:", reply_markup=markup)
-
-# Function to handle inline button clicks
-@bot2.callback_query_handler(func=lambda call: call.data.startswith('quality_'))
+# Function to handle inline keyboard callback for quality selection
+@bot2.callback_query_handler(func=lambda call: True)
 def handle_quality_selection(call):
-    # Extract quality and URL from the callback data
-    data = call.data.split('_')
-    quality = data[1]
-    url = '_'.join(data[2:])  # Reconstruct the URL after the quality part
+    quality = call.data
+    url = call.message.reply_to_message.text  # Assume the original URL is in a replied message
+    bot2.reply_to(call.message, f"Downloading with quality: {quality}. This may take some time...")
+    threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
 
-    bot2.answer_callback_query(call.id, text=f"Quality selected: {quality}")
-
-    # Now download the media with the selected quality
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None, quality='best'):
     if not is_valid_url(url):
-        bot2.reply_to(call.message, "The provided URL is not valid. Please enter a valid URL.")
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
     try:
-        bot2.reply_to(call.message, "Downloading media, this may take some time...")
+        bot2.reply_to(message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality)
+            future = executor.submit(download_media, url, quality, username, password)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
 
             if file_path.lower().endswith('.mp4'):
                 with open(file_path, 'rb') as media:
-                    bot2.send_video(call.message.chat.id, media)
+                    bot2.send_video(message.chat.id, media)
             else:
                 with open(file_path, 'rb') as media:
                     if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(call.message.chat.id, media)
+                        bot2.send_photo(message.chat.id, media)
                     else:
-                        bot2.send_document(call.message.chat.id, media)
+                        bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
-            bot2.reply_to(call.message, "Download and sending completed successfully.")
+            bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
-        bot2.reply_to(call.message, f"Failed to download. Error: {str(e)}")
+        bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
+# Function to handle messages and provide quality selection
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
+
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
-    send_quality_options(message, url)
+    # Display quality selection inline keyboard
+    markup = InlineKeyboardMarkup()
+    qualities = ['best', '1080p', '720p', '480p', '360p']
+    for quality in qualities:
+        markup.add(InlineKeyboardButton(text=quality, callback_data=quality))
+
+    bot2.reply_to(message, "Select video quality:", reply_markup=markup)
 
 # Flask app setup
 app = Flask(__name__)
