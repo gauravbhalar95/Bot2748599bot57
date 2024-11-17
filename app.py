@@ -132,15 +132,15 @@ def handle_links_with_quality(message):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
-    # Fetch available qualities
-    formats = fetch_available_formats(url)
-    if not formats:
-        bot2.reply_to(message, "Could not retrieve available qualities.")
+    # Check if it's a known platform URL
+    platform_formats = fetch_available_formats(url)
+    if not platform_formats:
+        bot2.reply_to(message, "Could not retrieve available formats.")
         return
 
     # Create inline buttons for each available quality
     keyboard = InlineKeyboardMarkup(row_width=3)
-    for format in formats:
+    for format in platform_formats:
         if 'format_note' in format and 'url' in format:
             quality = format['format_note']
             quality_button = InlineKeyboardButton(f"{quality}", callback_data=f"{url}|{format['format_id']}")
@@ -154,12 +154,46 @@ def handle_quality_selection(call):
     url, format_id = call.data.split('|')
     bot2.answer_callback_query(call.id, "Quality selected, starting download...")
 
-    formats = fetch_available_formats(url)
-    for format in formats:
+    platform_formats = fetch_available_formats(url)
+    for format in platform_formats:
         if format['format_id'] == format_id:
             quality = format['format_id']
             download_and_send(call.message, url, quality)
             break
+
+# Function to check platform and fetch relevant formats
+def handle_platform_links(url, message):
+    try:
+        if "instagram.com" in url:
+            platform_formats = fetch_available_formats(url)  # Instagram specific fetching logic (via yt-dlp)
+        elif "twitter.com" in url:
+            platform_formats = fetch_available_formats(url)  # Twitter specific fetching logic (via yt-dlp)
+        elif "facebook.com" in url:
+            platform_formats = fetch_available_formats(url)  # Facebook specific fetching logic (via yt-dlp)
+        elif "youtube.com" in url or "youtu.be" in url:
+            platform_formats = fetch_available_formats(url)  # YouTube specific fetching logic (via yt-dlp)
+        else:
+            bot2.reply_to(message, "Unsupported platform URL.")
+            return
+        
+        # Show available formats
+        if not platform_formats:
+            bot2.reply_to(message, "Could not retrieve available formats.")
+            return
+
+        # Display quality options as buttons
+        keyboard = InlineKeyboardMarkup(row_width=3)
+        for format in platform_formats:
+            if 'format_note' in format and 'url' in format:
+                quality = format['format_note']
+                quality_button = InlineKeyboardButton(f"{quality}", callback_data=f"{url}|{format['format_id']}")
+                keyboard.add(quality_button)
+
+        bot2.reply_to(message, "Choose video quality:", reply_markup=keyboard)
+
+    except Exception as e:
+        bot2.reply_to(message, f"Error: {str(e)}")
+        logging.error(f"Error in handle_platform_links: {str(e)}")
 
 # Flask app setup
 app = Flask(__name__)
