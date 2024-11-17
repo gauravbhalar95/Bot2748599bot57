@@ -30,8 +30,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Function to sanitize filenames
-def sanitize_filename(filename, max_length=250):
+def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
@@ -44,13 +43,13 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media with a specified format
-def download_media(url, quality='best'):
+# Function to download media
+def download_media(url, username=None, password=None, quality=None):
     logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
 
-    # Set up options for yt-dlp
+    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': f'bestvideo[height<={quality}]+bestaudio/best',  # Use specified quality
+        'format': f'bestvideo[height<={quality}]+bestaudio/best' if quality else 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
         'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
@@ -58,9 +57,13 @@ def download_media(url, quality='best'):
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,
+        'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
+
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -82,25 +85,8 @@ def download_media(url, quality='best'):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to send quality selection buttons
-def send_quality_options(message, url):
-    markup = InlineKeyboardMarkup()
-    markup.row_width = 3
-    quality_options = ['1080', '720', '480']  # Add more options if needed
-    buttons = [InlineKeyboardButton(text=f"{q}p", callback_data=f"quality:{q}:{url}") for q in quality_options]
-    markup.add(*buttons)
-    bot2.send_message(message.chat.id, "Please select the download quality:", reply_markup=markup)
-
-# Function to handle quality selection callback
-@bot2.callback_query_handler(func=lambda call: call.data.startswith('quality'))
-def callback_quality_selection(call):
-    _, quality, url = call.data.split(':')
-    bot2.answer_callback_query(call.id, f"Selected quality: {quality}p")
-    bot2.send_message(call.message.chat.id, f"Downloading media in {quality}p quality. This may take some time...")
-    threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
-
 # Function to download media and send it asynchronously
-def download_and_send(message, url, username=None, password=None, quality='best'):
+def download_and_send(message, url, username=None, password=None, quality=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -110,7 +96,7 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality)
+            future = executor.submit(download_media, url, username, password, quality)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -132,14 +118,40 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
+# Function to send quality selection buttons
+def send_quality_options(message, url):
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 3
+    quality_options = ['1080', '720', '480']
+    buttons = [InlineKeyboardButton(text=f"{q}p", callback_data=f"quality:{q}:{url}") for q in quality_options]
+    markup.add(*buttons)
+    bot2.send_message(message.chat.id, "Please select the download quality:", reply_markup=markup)
+
+# Handle start command
+@bot2.message_handler(commands=['start'])
+def send_welcome(message):
+    bot2.reply_to(message, "Welcome! Please send me a URL to download media.")
+
+# Handle URL messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
     if is_valid_url(url):
         send_quality_options(message, url)
     else:
-        bot2.reply_to(message, "Invalid URL. Please provide a valid URL.")
+        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+
+# Handle quality selection callback
+@bot2.callback_query_handler(func=lambda call: call.data.startswith('quality'))
+def callback_quality_selection(call):
+    try:
+        logging.debug(f"Received callback data: {call.data}")
+        _, quality, url = call.data.split(':')
+        bot2.answer_callback_query(call.id, f"Selected quality: {quality}p")
+        bot2.send_message(call.message.chat.id, f"Downloading media in {quality}p quality. This may take some time...")
+        threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
+    except Exception as e:
+        bot2.send_message(call.message.chat.id, f"Error processing callback: {str(e)}")
 
 # Flask app setup
 app = Flask(__name__)
