@@ -18,7 +18,8 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Directory to save downloaded files
 output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # YouTube cookies file
+cookies_file = 'cookies.txt'  # YouTube cookies file (ensure this exists)
+output_format = 'bestvideo+bestaudio/best'  # Default format to download
 
 # Ensure the downloads directory exists
 if not os.path.exists(output_dir):
@@ -43,7 +44,7 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to get available video formats
+# Function to get available video formats from the URL
 def get_video_formats(url):
     with yt_dlp.YoutubeDL() as ydl:
         info_dict = ydl.extract_info(url, download=False)
@@ -55,7 +56,7 @@ def get_video_formats(url):
                 available_qualities.append(f"{resolution}p")
         return available_qualities
 
-# Function to download media with specified quality
+# Function to download media with specified quality, authentication, and cookies
 def download_media(url, quality='best', username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
 
@@ -63,7 +64,7 @@ def download_media(url, quality='best', username=None, password=None):
     ydl_opts = {
         'format': f'{quality}[ext=mp4]/bestvideo+bestaudio/best',  # Select the specified quality or best
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication (YouTube)
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
@@ -73,6 +74,7 @@ def download_media(url, quality='best', username=None, password=None):
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
+    # Add authentication for YouTube if provided (username/password)
     if username and password:
         ydl_opts['username'] = username
         ydl_opts['password'] = password
