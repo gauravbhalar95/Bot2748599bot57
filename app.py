@@ -4,6 +4,7 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
+from moviepy.editor import VideoFileClip
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -49,9 +50,9 @@ def download_media(url, quality='best', username=None, password=None):
 
     # Set up options for yt-dlp
     ydl_opts = {
-        'format': f'{quality}[ext=mp4]/bestvideo+bestaudio/best',  # Select the specified quality or best
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'format': f'{quality}[ext=mp4]/bestvideo+bestaudio/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
@@ -85,11 +86,24 @@ def download_media(url, quality='best', username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
+# Function to trim video using moviepy
+def trim_video(file_path, start_time, end_time):
+    try:
+        logging.debug(f"Trimming video: {file_path} from {start_time}s to {end_time}s")
+        clip = VideoFileClip(file_path).subclip(start_time, end_time)
+        trimmed_file_path = f"{os.path.splitext(file_path)[0]}_trimmed.mp4"
+        clip.write_videofile(trimmed_file_path, codec='libx264')
+        clip.close()
+        return trimmed_file_path
+    except Exception as e:
+        logging.error(f"Error while trimming video: {e}")
+        raise
+
 # Function to handle inline keyboard callback for quality selection
 @bot2.callback_query_handler(func=lambda call: True)
 def handle_quality_selection(call):
     quality = call.data
-    url = call.message.reply_to_message.text  # Assume the original URL is in a replied message
+    url = call.message.reply_to_message.text
     bot2.reply_to(call.message, f"Downloading with quality: {quality}. This may take some time...")
     threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
 
@@ -109,16 +123,13 @@ def download_and_send(message, url, username=None, password=None, quality='best'
 
             logging.debug(f"Download completed, file path: {file_path}")
 
-            if file_path.lower().endswith('.mp4'):
-                with open(file_path, 'rb') as media:
-                    bot2.send_video(message.chat.id, media)
-            else:
-                with open(file_path, 'rb') as media:
-                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
-                    else:
-                        bot2.send_document(message.chat.id, media)
+            # Example usage of moviepy to trim video
+            trimmed_file_path = trim_video(file_path, start_time=10, end_time=30)
 
+            with open(trimmed_file_path, 'rb') as media:
+                bot2.send_video(message.chat.id, media)
+
+            os.remove(trimmed_file_path)
             os.remove(file_path)
             bot2.reply_to(message, "Download and sending completed successfully.")
 
@@ -135,7 +146,6 @@ def handle_links(message):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
 
-    # Display quality selection inline keyboard
     markup = InlineKeyboardMarkup()
     qualities = ['best', '1080p', '720p', '480p', '360p']
     for quality in qualities:
@@ -146,7 +156,6 @@ def handle_links(message):
 # Flask app setup
 app = Flask(__name__)
 
-# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
