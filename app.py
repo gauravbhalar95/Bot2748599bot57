@@ -122,15 +122,14 @@ def download_and_send(message, url, username=None, password=None, quality='best'
 
             logging.debug(f"Download completed, file path: {file_path}")
 
-            if file_path.lower().endswith('.mp4'):
-                with open(file_path, 'rb') as media:
+            # Handle sending the downloaded file
+            with open(file_path, 'rb') as media:
+                if file_path.lower().endswith('.mp4'):
                     bot2.send_video(message.chat.id, media)
-            else:
-                with open(file_path, 'rb') as media:
-                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        bot2.send_photo(message.chat.id, media)
-                    else:
-                        bot2.send_document(message.chat.id, media)
+                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                    bot2.send_photo(message.chat.id, media)
+                else:
+                    bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
             bot2.reply_to(message, "Download and sending completed successfully.")
