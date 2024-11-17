@@ -4,7 +4,6 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
@@ -30,8 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-# Sanitize filenames to avoid issues
-def sanitize_filename(filename, max_length=250):
+def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
@@ -44,43 +42,34 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to fetch available formats using yt-dlp
-def fetch_available_formats(url):
-    ydl_opts = {
-        'quiet': True,
-        'extract_flat': True
-    }
-    formats = []
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            formats = info_dict.get('formats', [])
-    except Exception as e:
-        logging.error(f"Failed to fetch formats: {e}")
-    return formats
-
-# Function to start downloading the video
-def download_media(url, quality):
+# Function to download media
+def download_media(url, username=None, password=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
+    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': quality,  # Choose selected format
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'socket_timeout': 10,
-        'retries': 5,
+        'socket_timeout': 20,  # Increased timeout to 20 seconds
+        'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
+
+    if username and password:
+        ydl_opts['username'] = username
+        ydl_opts['password'] = password
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
+        # Ensure the download is complete and no partial file is left behind
         if not os.path.exists(file_path):
             part_file_path = f"{file_path}.part"
             if os.path.exists(part_file_path):
@@ -96,8 +85,8 @@ def download_media(url, quality):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to send media after download
-def download_and_send(message, url, quality):
+# Function to download media and send it asynchronously
+def download_and_send(message, url, username=None, password=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -107,93 +96,41 @@ def download_and_send(message, url, quality):
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality)
+            future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
 
-            with open(file_path, 'rb') as media:
-                bot2.send_video(message.chat.id, media)
+            if file_path.lower().endswith('.mp4'):
+                with open(file_path, 'rb') as media:
+                    bot2.send_video(message.chat.id, media)
+            else:
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
+            logging.debug(f"Removed file: {file_path}")
             bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle message and show available video qualities
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
-def handle_links_with_quality(message):
+def handle_links(message):
     url = message.text
 
-    # Validate URL
-    if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
+    username = None
+    password = None
+    if "@" in url:
+        username, password = url.split('@', 1)
+        url = password
 
-    # Check if it's a known platform URL
-    platform_formats = fetch_available_formats(url)
-    if not platform_formats:
-        bot2.reply_to(message, "Could not retrieve available formats.")
-        return
-
-    # Create inline buttons for each available quality
-    keyboard = InlineKeyboardMarkup(row_width=3)
-    for format in platform_formats:
-        if 'format_note' in format and 'url' in format:
-            quality = format['format_note']
-            quality_button = InlineKeyboardButton(f"{quality}", callback_data=f"{url}|{format['format_id']}")
-            keyboard.add(quality_button)
-
-    bot2.reply_to(message, "Choose video quality:", reply_markup=keyboard)
-
-# Function to handle quality selection and download
-@bot2.callback_query_handler(func=lambda call: True)
-def handle_quality_selection(call):
-    url, format_id = call.data.split('|')
-    bot2.answer_callback_query(call.id, "Quality selected, starting download...")
-
-    platform_formats = fetch_available_formats(url)
-    for format in platform_formats:
-        if format['format_id'] == format_id:
-            quality = format['format_id']
-            download_and_send(call.message, url, quality)
-            break
-
-# Function to check platform and fetch relevant formats
-def handle_platform_links(url, message):
-    try:
-        if "instagram.com" in url:
-            platform_formats = fetch_available_formats(url)  # Instagram specific fetching logic (via yt-dlp)
-        elif "twitter.com" in url:
-            platform_formats = fetch_available_formats(url)  # Twitter specific fetching logic (via yt-dlp)
-        elif "facebook.com" in url:
-            platform_formats = fetch_available_formats(url)  # Facebook specific fetching logic (via yt-dlp)
-        elif "youtube.com" in url or "youtu.be" in url:
-            platform_formats = fetch_available_formats(url)  # YouTube specific fetching logic (via yt-dlp)
-        else:
-            bot2.reply_to(message, "Unsupported platform URL.")
-            return
-        
-        # Show available formats
-        if not platform_formats:
-            bot2.reply_to(message, "Could not retrieve available formats.")
-            return
-
-        # Display quality options as buttons
-        keyboard = InlineKeyboardMarkup(row_width=3)
-        for format in platform_formats:
-            if 'format_note' in format and 'url' in format:
-                quality = format['format_note']
-                quality_button = InlineKeyboardButton(f"{quality}", callback_data=f"{url}|{format['format_id']}")
-                keyboard.add(quality_button)
-
-        bot2.reply_to(message, "Choose video quality:", reply_markup=keyboard)
-
-    except Exception as e:
-        bot2.reply_to(message, f"Error: {str(e)}")
-        logging.error(f"Error in handle_platform_links: {str(e)}")
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
