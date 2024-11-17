@@ -27,8 +27,8 @@ if not os.path.exists(output_dir):
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
+# Ensure yt-dlp is installed and updated
+os.system('pip install -U yt-dlp')
 
 def sanitize_filename(filename, max_length=250):
     import re
@@ -116,27 +116,32 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         bot2.reply_to(message, "Downloading media, this may take some time...")
         logging.debug("Initiating media download")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality, username, password)
-            file_path = future.result()
-
-            logging.debug(f"Download completed, file path: {file_path}")
-
-            # Handle sending the downloaded file
-            with open(file_path, 'rb') as media:
-                if file_path.lower().endswith('.mp4'):
-                    bot2.send_video(message.chat.id, media)
-                elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    bot2.send_photo(message.chat.id, media)
-                else:
-                    bot2.send_document(message.chat.id, media)
-
-            os.remove(file_path)
-            bot2.reply_to(message, "Download and sending completed successfully.")
+        # Remove ThreadPoolExecutor as we're using threading
+        threading.Thread(target=download_and_send_task, args=(message, url, username, password, quality)).start()
 
     except Exception as e:
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
+
+def download_and_send_task(message, url, username, password, quality):
+    try:
+        file_path = download_media(url, quality, username, password)
+        logging.debug(f"Download completed, file path: {file_path}")
+
+        # Handle sending the downloaded file
+        with open(file_path, 'rb') as media:
+            if file_path.lower().endswith('.mp4'):
+                bot2.send_video(message.chat.id, media)
+            elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                bot2.send_photo(message.chat.id, media)
+            else:
+                bot2.send_document(message.chat.id, media)
+
+        os.remove(file_path)
+        bot2.reply_to(message, "Download and sending completed successfully.")
+    except Exception as e:
+        bot2.reply_to(message, f"Error during download: {e}")
+        logging.error(f"Error during download: {e}")
 
 # Function to handle messages and provide quality selection
 @bot2.message_handler(func=lambda message: True)
