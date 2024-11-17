@@ -4,10 +4,8 @@ import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-from moviepy.editor import VideoFileClip
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -31,7 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
-def sanitize_filename(filename, max_length=250):
+def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
@@ -44,21 +42,21 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Function to download media with specified quality
-def download_media(url, quality='best', username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url} with quality: {quality}")
+# Function to download media
+def download_media(url, username=None, password=None):
+    logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Set up options for yt-dlp
+    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
-        'format': f'{quality}[ext=mp4]/bestvideo+bestaudio/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
+        'format': 'best[ext=mp4]/best',  # Try mp4 format first
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
+        'cookiefile': cookies_file,  # Use cookie file if required for authentication
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,
+        'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
@@ -86,29 +84,8 @@ def download_media(url, quality='best', username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to trim video using moviepy
-def trim_video(file_path, start_time, end_time):
-    try:
-        logging.debug(f"Trimming video: {file_path} from {start_time}s to {end_time}s")
-        clip = VideoFileClip(file_path).subclip(start_time, end_time)
-        trimmed_file_path = f"{os.path.splitext(file_path)[0]}_trimmed.mp4"
-        clip.write_videofile(trimmed_file_path, codec='libx264')
-        clip.close()
-        return trimmed_file_path
-    except Exception as e:
-        logging.error(f"Error while trimming video: {e}")
-        raise
-
-# Function to handle inline keyboard callback for quality selection
-@bot2.callback_query_handler(func=lambda call: True)
-def handle_quality_selection(call):
-    quality = call.data
-    url = call.message.reply_to_message.text
-    bot2.reply_to(call.message, f"Downloading with quality: {quality}. This may take some time...")
-    threading.Thread(target=download_and_send, args=(call.message, url, None, None, quality)).start()
-
 # Function to download media and send it asynchronously
-def download_and_send(message, url, username=None, password=None, quality='best'):
+def download_and_send(message, url, username=None, password=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -118,18 +95,21 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, quality, username, password)
+            future = executor.submit(download_media, url, username, password)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
 
-            # Example usage of moviepy to trim video
-            trimmed_file_path = trim_video(file_path, start_time=10, end_time=30)
+            if file_path.lower().endswith('.mp4'):
+                with open(file_path, 'rb') as media:
+                    bot2.send_video(message.chat.id, media)
+            else:
+                with open(file_path, 'rb') as media:
+                    if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        bot2.send_photo(message.chat.id, media)
+                    else:
+                        bot2.send_document(message.chat.id, media)
 
-            with open(trimmed_file_path, 'rb') as media:
-                bot2.send_video(message.chat.id, media)
-
-            os.remove(trimmed_file_path)
             os.remove(file_path)
             bot2.reply_to(message, "Download and sending completed successfully.")
 
@@ -137,25 +117,23 @@ def download_and_send(message, url, username=None, password=None, quality='best'
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages and provide quality selection
+# Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     url = message.text
 
-    if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
-        return
+    username = None
+    password = None
+    if "@" in url:
+        username, password = url.split('@', 1)
+        url = password
 
-    markup = InlineKeyboardMarkup()
-    qualities = ['best', '1080p', '720p', '480p', '360p']
-    for quality in qualities:
-        markup.add(InlineKeyboardButton(text=quality, callback_data=quality))
-
-    bot2.reply_to(message, "Select video quality:", reply_markup=markup)
+    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
 
 # Flask app setup
 app = Flask(__name__)
 
+# Flask routes for webhook handling
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def getMessage_bot2():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
