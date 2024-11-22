@@ -55,7 +55,7 @@ def download_media(url, username=None, password=None):
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
-        'socket_timeout': 20,  # Increased timeout to 20 seconds
+        'socket_timeout': 10,
         'retries': 5,  # Retry on download errors
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
@@ -69,7 +69,6 @@ def download_media(url, username=None, password=None):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
-        # Ensure the download is complete and no partial file is left behind
         if not os.path.exists(file_path):
             part_file_path = f"{file_path}.part"
             if os.path.exists(part_file_path):
@@ -112,7 +111,6 @@ def download_and_send(message, url, username=None, password=None):
                         bot2.send_document(message.chat.id, media)
 
             os.remove(file_path)
-            logging.debug(f"Removed file: {file_path}")
             bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
