@@ -6,6 +6,7 @@ import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
+import traceback
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -29,6 +30,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
+# Function to sanitize filenames
 def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
     import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
@@ -46,7 +48,6 @@ def is_valid_url(url):
 def download_media(url, start_time=None, end_time=None):
     logging.debug(f"Attempting to download media from URL: {url}")
 
-    # Set up options for yt-dlp with filename sanitization
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # Try mp4 format first
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
@@ -65,6 +66,8 @@ def download_media(url, start_time=None, end_time=None):
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
+        logging.debug(f"Download completed, file path: {file_path}")
+
         if start_time or end_time:
             trimmed_file_path = file_path.replace(".mp4", "_trimmed.mp4")
             ffmpeg_cmd = f"ffmpeg -i \"{file_path}\" -ss {start_time or 0} -to {end_time or info_dict['duration']} -c copy \"{trimmed_file_path}\""
@@ -75,7 +78,7 @@ def download_media(url, start_time=None, end_time=None):
         return file_path
 
     except Exception as e:
-        logging.error(f"yt-dlp download error: {str(e)}")
+        logging.error("yt-dlp download error:", exc_info=True)
         raise
 
 # Function to download media and send it asynchronously
@@ -108,8 +111,8 @@ def download_and_send(message, url, start_time=None, end_time=None):
             bot2.reply_to(message, "Download and sending completed successfully.")
 
     except Exception as e:
+        logging.error("Download failed:", exc_info=True)
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
-        logging.error(f"Download failed: {e}")
 
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
