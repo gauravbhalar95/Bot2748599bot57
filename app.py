@@ -5,11 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
 from telebot import TeleBot
 
-# Telegram bot token
-TELEGRAM_BOT_TOKEN = os.getenv("API_TOKEN_2")
+# Telegram bot token retrieved from environment variables
+api_token_2 = os.getenv("API_TOKEN_2")
 output_dir = "./downloads/"
 cookies_file = "cookies.txt"
-bot2 = TeleBot(TELEGRAM_BOT_TOKEN)
+bot2 = TeleBot(api_token_2)
 
 # Ensure output directory exists
 os.makedirs(output_dir, exist_ok=True)
