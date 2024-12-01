@@ -7,6 +7,7 @@ import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
 import traceback
+import re
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -30,9 +31,11 @@ logging.basicConfig(level=logging.DEBUG)
 # Ensure yt-dlp is updated
 os.system('yt-dlp -U')
 
+# Supported domains
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'twitter.com', 'facebook.com']
+
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
-    import re
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
@@ -40,9 +43,30 @@ def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
 def is_valid_url(url):
     try:
         result = urlparse(url)
-        return all([result.scheme, result.netloc])
+        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
+
+# Function to parse time parameters
+def parse_time_parameters(message_text):
+    try:
+        parts = message_text.split()
+        url = parts[0]
+        start_time = None
+        end_time = None
+
+        if len(parts) > 1:
+            time_pattern = r'(\d{1,2}:\d{2}:\d{2})'
+            matches = re.findall(time_pattern, message_text)
+            if len(matches) >= 1:
+                start_time = matches[0]
+            if len(matches) == 2:
+                end_time = matches[1]
+        
+        return url, start_time, end_time
+    except Exception as e:
+        logging.error("Error parsing time parameters", exc_info=True)
+        return None, None, None
 
 # Function to download and trim media
 def download_media(url, start_time=None, end_time=None):
@@ -57,7 +81,7 @@ def download_media(url, start_time=None, end_time=None):
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
+        'retries': 5,
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
     }
 
@@ -84,7 +108,7 @@ def download_media(url, start_time=None, end_time=None):
 # Function to download media and send it asynchronously
 def download_and_send(message, url, start_time=None, end_time=None):
     if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
+        bot2.reply_to(message, "The provided URL is either invalid or unsupported. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
 
     try:
@@ -117,18 +141,11 @@ def download_and_send(message, url, start_time=None, end_time=None):
 # Function to handle messages
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot2.reply_to(message, "Please provide a URL and time parameters (e.g., 'https://youtu.be/qmYGd0V4qJY?si=B8EvmwKKVVXzeJVw 01:19:10 01:21:48').")
-        return
-
-    url = parts[0]
-    try:
-        start_time = parts[1]
-        end_time = parts[2] if len(parts) > 2 else None
+    url, start_time, end_time = parse_time_parameters(message.text)
+    if url:
         threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
-    except IndexError:
-        bot2.reply_to(message, "Invalid time parameters. Please use the format 'HH:MM:SS'.")
+    else:
+        bot2.reply_to(message, "Invalid input. Please provide a valid URL and optional time parameters (e.g., 'https://youtu.be/qmYGd0V4qJY 01:19:10 01:21:48').")
 
 # Flask app setup
 app = Flask(__name__)
