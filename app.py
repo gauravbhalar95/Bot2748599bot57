@@ -1,64 +1,47 @@
 import os
+import re
 import logging
-import threading
-from flask import Flask, request
-import telebot
-import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlparse
+import yt_dlp
+from telebot import TeleBot
 
-# Load API tokens and channel IDs from environment variables
-API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
+# Telegram bot token
+TELEGRAM_BOT_TOKEN = os.getenv("API_TOKEN_2")
+output_dir = "./downloads/"
+cookies_file = "cookies.txt"
+bot2 = TeleBot(TELEGRAM_BOT_TOKEN)
 
-# Initialize the bot with debug mode enabled
-bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
-telebot.logger.setLevel(logging.DEBUG)
+# Ensure output directory exists
+os.makedirs(output_dir, exist_ok=True)
 
-# Directory to save downloaded files
-output_dir = 'downloads/'
-cookies_file = 'cookies.txt'  # YouTube cookies file
+def sanitize_filename(filename):
+    """Sanitize filename to avoid issues with special characters."""
+    return re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
 
-# Ensure the downloads directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-
-# Enable debug logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Ensure yt-dlp is updated
-os.system('yt-dlp -U')
-
-def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
-    import re
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
-    return filename.strip()[:max_length]
-
-# Function to validate URLs
 def is_valid_url(url):
-    try:
-        result = urlparse(url)
-        return all([result.scheme, result.netloc])
-    except ValueError:
-        return False
+    """Check if the provided URL is valid."""
+    return re.match(r'^(https?://)', url) is not None
 
-# Function to download media
-def download_media(url, username=None, password=None):
-    logging.debug(f"Attempting to download media from URL: {url}")
+def download_media(url, username=None, password=None, start_time=None, end_time=None):
+    logging.debug(f"Attempting to download media from URL: {url} with start_time: {start_time}, end_time: {end_time}")
 
-    # Set up options for yt-dlp with filename sanitization
+    # Set up options for yt-dlp
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # Try mp4 format first
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',  # Use sanitized title
-        'cookiefile': cookies_file,  # Use cookie file if required for authentication
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
         }],
         'socket_timeout': 10,
-        'retries': 5,  # Retry on download errors
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36'
+        'retries': 5,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36',
     }
+
+    # Add time range if specified
+    if start_time and end_time:
+        ydl_opts['download_sections'] = [f"*{start_time}-{end_time}"]
 
     if username and password:
         ydl_opts['username'] = username
@@ -84,8 +67,14 @@ def download_media(url, username=None, password=None):
         logging.error(f"yt-dlp download error: {str(e)}")
         raise
 
-# Function to download media and send it asynchronously
 def download_and_send(message, url, username=None, password=None):
+    # Parse the message for start and end times if provided
+    time_match = re.search(r"\?start=(\d+)&end=(\d+)", url)
+    start_time, end_time = None, None
+    if time_match:
+        start_time = time_match.group(1)
+        end_time = time_match.group(2)
+
     if not is_valid_url(url):
         bot2.reply_to(message, "The provided URL is not valid. Please enter a valid URL.")
         return
@@ -95,7 +84,7 @@ def download_and_send(message, url, username=None, password=None):
         logging.debug("Initiating media download")
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future = executor.submit(download_media, url, username, password)
+            future = executor.submit(download_media, url, username, password, start_time, end_time)
             file_path = future.result()
 
             logging.debug(f"Download completed, file path: {file_path}")
@@ -117,33 +106,19 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle messages
-@bot2.message_handler(func=lambda message: True)
-def handle_links(message):
-    url = message.text
+@bot2.message_handler(commands=['download'])
+def handle_download(message):
+    try:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            bot2.reply_to(message, "Please provide a valid URL after the /download command.")
+            return
 
-    username = None
-    password = None
-    if "@" in url:
-        username, password = url.split('@', 1)
-        url = password
-
-    threading.Thread(target=download_and_send, args=(message, url, username, password)).start()
-
-# Flask app setup
-app = Flask(__name__)
-
-# Flask routes for webhook handling
-@app.route('/' + API_TOKEN_2, methods=['POST'])
-def getMessage_bot2():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
-
-@app.route('/')
-def webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=os.getenv('KOYEB_URL') + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
+        url = args[1]
+        download_and_send(message, url)
+    except Exception as e:
+        logging.error(f"Error handling download command: {str(e)}")
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    logging.basicConfig(level=logging.DEBUG)
+    bot2.polling(none_stop=True)
