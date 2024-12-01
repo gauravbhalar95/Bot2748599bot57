@@ -2,14 +2,19 @@ import os
 import re
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, request
 import yt_dlp
-from telebot import TeleBot
+from telebot import TeleBot, types
 
-# Telegram bot token retrieved from environment variables
+# Environment variables
 api_token_2 = os.getenv("API_TOKEN_2")
 output_dir = "./downloads/"
 cookies_file = "cookies.txt"
+webhook_url = os.getenv("WEBHOOK_URL")
 bot2 = TeleBot(api_token_2)
+
+# Flask app
+app = Flask(__name__)
 
 # Ensure output directory exists
 os.makedirs(output_dir, exist_ok=True)
@@ -119,6 +124,15 @@ def handle_download(message):
     except Exception as e:
         logging.error(f"Error handling download command: {str(e)}")
 
+@app.route(f"/{api_token_2}", methods=['POST'])
+def webhook():
+    json_string = request.get_data().decode('utf-8')
+    update = types.Update.de_json(json_string)
+    bot2.process_new_updates([update])
+    return "", 200
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    bot2.polling(none_stop=True)
+    bot2.remove_webhook()
+    bot2.set_webhook(url=webhook_url)
+    app.run(host="0.0.0.0", port=8080)
