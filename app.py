@@ -118,16 +118,17 @@ def download_and_send(message, url, start_time=None, end_time=None):
 @bot2.message_handler(func=lambda message: True)
 def handle_links(message):
     parts = message.text.split()
+    if len(parts) < 2:
+        bot2.reply_to(message, "Please provide a URL and time parameters (e.g., 'https://youtu.be/qmYGd0V4qJY?si=B8EvmwKKVVXzeJVw 01:19:10 01:21:48').")
+        return
+
     url = parts[0]
-    start_time = None
-    end_time = None
-
-    if len(parts) > 1:
-        params = parse_qs(parts[1])
-        start_time = params.get('start', [None])[0]
-        end_time = params.get('end', [None])[0]
-
-    threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
+    try:
+        start_time = parts[1]
+        end_time = parts[2] if len(parts) > 2 else None
+        threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
+    except IndexError:
+        bot2.reply_to(message, "Invalid time parameters. Please use the format 'HH:MM:SS'.")
 
 # Flask app setup
 app = Flask(__name__)
