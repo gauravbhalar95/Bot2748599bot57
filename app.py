@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.DEBUG)
 os.system('yt-dlp -U')
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'twitter.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=250):  # Reduce max_length if needed
