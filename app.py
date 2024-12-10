@@ -6,6 +6,7 @@ import telebot
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
+import subprocess
 import traceback
 import re
 
@@ -29,7 +30,16 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Ensure yt-dlp is updated
-os.system('yt-dlp -U')
+def update_yt_dlp():
+    try:
+        result = subprocess.run(['yt-dlp', '-U'], capture_output=True, text=True, check=True)
+        logging.info(f"yt-dlp update output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to update yt-dlp: {e.stderr}")
+    except FileNotFoundError:
+        logging.error("yt-dlp is not installed or not found in PATH.")
+
+update_yt_dlp()
 
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
@@ -62,7 +72,7 @@ def parse_time_parameters(message_text):
                 start_time = matches[0]
             if len(matches) == 2:
                 end_time = matches[1]
-        
+
         return url, start_time, end_time
     except Exception as e:
         logging.error("Error parsing time parameters", exc_info=True)
