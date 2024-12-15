@@ -15,9 +15,8 @@ from mega import Mega
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Your Channel ID with @ like '@YourChannel'
 
-# Mega login credentials
-MEGA_EMAIL = os.getenv('MEGA_EMAIL')
-MEGA_PASSWORD = os.getenv('MEGA_PASSWORD')
+# Dictionary to store user Mega credentials
+user_mega_credentials = {}
 
 # Initialize the bot with debug mode enabled
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -46,13 +45,6 @@ def update_yt_dlp():
 
 update_yt_dlp()
 
-# Initialize Mega instance and login
-mega = Mega()
-mega_client = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
-
-# Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
-
 # Function to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
@@ -62,7 +54,7 @@ def sanitize_filename(filename, max_length=250):
 def is_valid_url(url):
     try:
         result = urlparse(url)
-        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
+        return result.scheme in ['http', 'https'] and 'youtube.com' in result.netloc
     except ValueError:
         return False
 
@@ -125,12 +117,18 @@ def download_media(url, start_time=None, end_time=None):
         raise
 
 # Function to upload to Mega
-def upload_to_mega(file_path):
+def upload_to_mega(file_path, user_id):
     try:
-        file = mega_client.upload(file_path)
-        link = mega_client.get_upload_link(file)
-        logging.debug(f"File uploaded to Mega: {link}")
-        return link
+        if user_id in user_mega_credentials:
+            mega_email, mega_password = user_mega_credentials[user_id]
+            mega = Mega()
+            mega_client = mega.login(mega_email, mega_password)
+            file = mega_client.upload(file_path)
+            link = mega_client.get_upload_link(file)
+            logging.debug(f"File uploaded to Mega: {link}")
+            return link
+        else:
+            raise Exception("Mega credentials not provided for this user.")
     except Exception as e:
         logging.error("Failed to upload to Mega:", exc_info=True)
         raise
@@ -139,17 +137,17 @@ def upload_to_mega(file_path):
 def download_and_upload_to_mega(message, url, start_time=None, end_time=None):
     try:
         file_path = download_media(url, start_time, end_time)
-        link = upload_to_mega(file_path)
+        link = upload_to_mega(file_path, message.chat.id)
 
         bot2.reply_to(message, f"File uploaded successfully. Mega link: {link}")
         os.remove(file_path)
     except Exception as e:
         bot2.reply_to(message, f"Failed to process the request. Error: {str(e)}")
 
-# Function to download media and send it asynchronously
+# Function to download and send media
 def download_and_send(message, url, start_time=None, end_time=None):
     if not is_valid_url(url):
-        bot2.reply_to(message, "The provided URL is either invalid or unsupported. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        bot2.reply_to(message, "The provided URL is either invalid or unsupported. Supported platforms: YouTube.")
         return
 
     try:
@@ -179,6 +177,22 @@ def download_and_send(message, url, start_time=None, end_time=None):
         logging.error("Download failed:", exc_info=True)
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
 
+# Handle Mega credentials
+@bot2.message_handler(commands=['meganz'])
+def handle_mega_credentials(message):
+    try:
+        args = message.text.split(' ')
+        if len(args) == 3:
+            mega_email = args[1]
+            mega_password = args[2]
+            user_mega_credentials[message.chat.id] = (mega_email, mega_password)
+            bot2.reply_to(message, "Mega credentials saved successfully!")
+        else:
+            bot2.reply_to(message, "Please provide your Mega credentials in the format: /meganz email password")
+    except Exception as e:
+        logging.error("Error handling Mega credentials:", exc_info=True)
+        bot2.reply_to(message, "Failed to save Mega credentials. Please try again.")
+
 # Handle Mega-specific commands
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
@@ -188,18 +202,6 @@ def handle_mega(message):
         threading.Thread(target=download_and_upload_to_mega, args=(message, url, start_time, end_time)).start()
     else:
         bot2.reply_to(message, "Invalid input. Please provide a valid URL and optional time parameters.")
-
-# Handle general links
-@bot2.message_handler(func=lambda message: True)
-def handle_links(message):
-    if message.text.startswith('/mega'):
-        handle_mega(message)
-    else:
-        url, start_time, end_time = parse_time_parameters(message.text)
-        if url:
-            threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
-        else:
-            bot2.reply_to(message, "Invalid input. Please provide a valid URL and optional time parameters.")
 
 # Flask app setup
 app = Flask(__name__)
