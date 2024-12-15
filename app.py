@@ -105,35 +105,42 @@ def set_mega_credentials(message):
     except Exception as e:
         bot2.reply_to(message, f"Failed to set Mega.nz credentials: {e}")
 
-# Handle all messages to automatically download and upload
-@bot2.message_handler(func=lambda message: True)
-def handle_message(message):
+# Handle /mega command
+@bot2.message_handler(commands=['mega'])
+def handle_mega_command(message):
     try:
-        # Check if the message contains a valid URL
-        url = message.text.strip()
+        url = message.text.split(maxsplit=1)[1]
         if not is_valid_url(url):
-            bot2.reply_to(message, "Please send a valid link from supported platforms.")
+            bot2.reply_to(message, "Invalid URL or unsupported platform.")
             return
 
         bot2.reply_to(message, "Downloading the file, please wait...")
-
-        # Download the media
         file_path = download_media(url)
 
-        # Notify the user that the upload is starting
         bot2.reply_to(message, "Uploading to Mega.nz, please wait...")
-
-        # Upload the file to Mega.nz
         mega_link = upload_to_mega(file_path)
 
-        # Send the Mega.nz link back to the user
         bot2.reply_to(message, f"File uploaded successfully! Here is the link:\n{mega_link}")
-
-        # Remove the downloaded file after upload
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        os.remove(file_path)
     except Exception as e:
-        logging.error("Error in handling message:", exc_info=True)
+        logging.error("Error in /mega command:", exc_info=True)
+        bot2.reply_to(message, f"An error occurred: {e}")
+
+# Handle valid URLs sent without commands
+@bot2.message_handler(func=lambda message: is_valid_url(message.text.strip()))
+def handle_direct_download(message):
+    try:
+        url = message.text.strip()
+        bot2.reply_to(message, "Downloading the file, please wait...")
+        file_path = download_media(url)
+
+        # Send the file to the user
+        with open(file_path, 'rb') as file:
+            bot2.send_document(message.chat.id, file)
+
+        os.remove(file_path)
+    except Exception as e:
+        logging.error("Error in direct download:", exc_info=True)
         bot2.reply_to(message, f"An error occurred: {e}")
 
 # Flask app setup
