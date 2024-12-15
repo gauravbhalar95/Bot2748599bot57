@@ -1,14 +1,12 @@
 import os
 import logging
-import threading
+import subprocess
+import re
 from flask import Flask, request
 import telebot
 import yt_dlp
-from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlparse
-import subprocess
-import re
 from mega import Mega
+from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -107,25 +105,36 @@ def set_mega_credentials(message):
     except Exception as e:
         bot2.reply_to(message, f"Failed to set Mega.nz credentials: {e}")
 
-# /mega command to upload after download
-@bot2.message_handler(commands=['mega'])
-def mega_download_and_upload(message):
+# Handle all messages to automatically download and upload
+@bot2.message_handler(func=lambda message: True)
+def handle_message(message):
     try:
-        url = message.text.split(maxsplit=1)[1]
+        # Check if the message contains a valid URL
+        url = message.text.strip()
         if not is_valid_url(url):
-            bot2.reply_to(message, "Invalid URL or unsupported platform.")
+            bot2.reply_to(message, "Please send a valid link from supported platforms.")
             return
 
-        bot2.reply_to(message, "Downloading media, please wait...")
+        bot2.reply_to(message, "Downloading the file, please wait...")
+
+        # Download the media
         file_path = download_media(url)
+
+        # Notify the user that the upload is starting
         bot2.reply_to(message, "Uploading to Mega.nz, please wait...")
+
+        # Upload the file to Mega.nz
         mega_link = upload_to_mega(file_path)
 
-        bot2.reply_to(message, f"Media uploaded successfully! Mega.nz link:\n{mega_link}")
-        os.remove(file_path)
+        # Send the Mega.nz link back to the user
+        bot2.reply_to(message, f"File uploaded successfully! Here is the link:\n{mega_link}")
+
+        # Remove the downloaded file after upload
+        if os.path.exists(file_path):
+            os.remove(file_path)
     except Exception as e:
-        logging.error("Error in /mega command:", exc_info=True)
-        bot2.reply_to(message, f"Error: {e}")
+        logging.error("Error in handling message:", exc_info=True)
+        bot2.reply_to(message, f"An error occurred: {e}")
 
 # Flask app setup
 app = Flask(__name__)
