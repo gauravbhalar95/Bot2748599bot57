@@ -64,24 +64,17 @@ def download_media(url):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-# Mega.nz login function with retries
-def mega_login(username, password, retries=3):
+# Mega.nz login function
+def mega_login(username, password):
     global mega_session
-    attempt = 0
-    while attempt < retries:
-        try:
-            # Attempt to login to Mega.nz
-            mega_session = mega_client.login(username, password)
-            logging.info("Logged into Mega.nz successfully.")
-            return mega_session
-        except Exception as e:
-            attempt += 1
-            logging.error(f"Mega.nz login failed (Attempt {attempt}/{retries}): {str(e)}")
-            if attempt < retries:
-                logging.info("Retrying login...")
-            else:
-                logging.error("Max retries reached. Unable to login.")
-                return None
+    try:
+        # Attempt to login to Mega.nz
+        mega_session = mega_client.login(username, password)
+        logging.info("Logged into Mega.nz successfully.")
+        return mega_session
+    except Exception as e:
+        logging.error(f"Mega.nz login failed: {str(e)}")
+        return None
 
 # Download and upload to Mega
 def download_and_upload_to_mega(message, url, username, password):
