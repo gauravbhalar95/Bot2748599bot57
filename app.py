@@ -83,7 +83,6 @@ def upload_to_mega(file_path):
     if mega_client is None:
         raise Exception("Mega client is not initialized. Please log in first using /meganz <username> <password>.")
 
-    # Upload the file to Mega
     try:
         file = mega_client.upload(file_path)
         return file
@@ -102,7 +101,10 @@ def download_trim_upload_and_send_media(message, url, start_time, end_time):
         file_path = download_media(url)
 
         # Trim the video
-        trimmed_file_path = trim_video(file_path, start_time, end_time)
+        if start_time and end_time:
+            trimmed_file_path = trim_video(file_path, start_time, end_time)
+        else:
+            trimmed_file_path = file_path
 
         # Upload to Mega
         mega_file = upload_to_mega(trimmed_file_path)
@@ -112,8 +114,9 @@ def download_trim_upload_and_send_media(message, url, start_time, end_time):
         bot2.reply_to(message, f"Video trimmed successfully! The file has been uploaded to Mega: {mega_link}")
 
         # Clean up the downloaded and trimmed files
+        if start_time and end_time:
+            os.remove(trimmed_file_path)
         os.remove(file_path)
-        os.remove(trimmed_file_path)
         bot2.reply_to(message, "Download, trim and upload completed.")
     except Exception as e:
         logging.error("Download, trim, or upload failed", exc_info=True)
