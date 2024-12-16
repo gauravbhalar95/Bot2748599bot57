@@ -101,18 +101,23 @@ def download_trim_upload_and_send_media(message, url, start_time, end_time):
         bot2.reply_to(message, "Downloading video, please wait...")
         file_path = download_media(url)
 
-        # Trim the video
-        if start_time and end_time:
+        # Only trim for YouTube videos
+        if 'youtube' in url.lower() and start_time and end_time:
             trimmed_file_path = trim_video(file_path, start_time, end_time)
         else:
             trimmed_file_path = file_path
 
-        # Upload to Mega
-        mega_file = upload_to_mega(trimmed_file_path)
+        # Upload to Mega if Mega client is logged in
+        mega_link = None
+        if mega_client:
+            mega_file = upload_to_mega(trimmed_file_path)
+            mega_link = mega_file['link']
 
-        # Send the Mega link back to the user
-        mega_link = mega_file['link']
-        bot2.reply_to(message, f"Video trimmed successfully! The file has been uploaded to Mega: {mega_link}")
+        # Send the Mega link or direct link based on the platform
+        if mega_link:
+            bot2.reply_to(message, f"Video trimmed successfully! The file has been uploaded to Mega: {mega_link}")
+        else:
+            bot2.reply_to(message, "Video downloaded successfully. No Mega upload required.")
 
         # Clean up the downloaded and trimmed files
         if start_time and end_time:
