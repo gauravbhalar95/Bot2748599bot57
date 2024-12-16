@@ -91,7 +91,28 @@ def upload_to_mega(file_path):
         logging.error("Mega upload error", exc_info=True)
         raise
 
-# Download, trim, upload and send media
+# Handle download and send media (without Mega upload)
+def download_and_send_media(message, url):
+    if not is_valid_url(url):
+        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        return
+
+    try:
+        bot2.reply_to(message, "Downloading video, please wait...")
+        file_path = download_media(url)
+
+        # Send the downloaded media directly to the user
+        with open(file_path, 'rb') as video:
+            bot2.send_video(message.chat.id, video, caption="Here is your requested video!")
+
+        # Clean up the downloaded file
+        os.remove(file_path)
+        bot2.reply_to(message, "Download and send completed.")
+    except Exception as e:
+        logging.error("Download or send failed", exc_info=True)
+        bot2.reply_to(message, f"Download or send failed: {str(e)}")
+
+# Download, trim, upload and send media (with Mega upload option)
 def download_trim_upload_and_send_media(message, url, start_time, end_time):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
@@ -107,23 +128,25 @@ def download_trim_upload_and_send_media(message, url, start_time, end_time):
         else:
             trimmed_file_path = file_path
 
+        # Send the downloaded media directly to the user
+        with open(trimmed_file_path, 'rb') as video:
+            bot2.send_video(message.chat.id, video, caption="Here is your requested video!")
+
         # Upload to Mega if Mega client is logged in
         mega_link = None
         if mega_client:
             mega_file = upload_to_mega(trimmed_file_path)
             mega_link = mega_file['link']
 
-        # Send the Mega link or direct link based on the platform
+        # Send Mega link if available
         if mega_link:
-            bot2.reply_to(message, f"Video trimmed successfully! The file has been uploaded to Mega: {mega_link}")
-        else:
-            bot2.reply_to(message, "Video downloaded successfully. No Mega upload required.")
+            bot2.reply_to(message, f"Video uploaded to Mega: {mega_link}")
 
         # Clean up the downloaded and trimmed files
         if start_time and end_time:
             os.remove(trimmed_file_path)
         os.remove(file_path)
-        bot2.reply_to(message, "Download, trim and upload completed.")
+        bot2.reply_to(message, "Download, trim, and upload completed.")
     except Exception as e:
         logging.error("Download, trim, or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download, trim, or upload failed: {str(e)}")
@@ -180,8 +203,8 @@ def handle_mega(message):
             return
 
         url = args[1]
-        # Handle download, upload to Mega and send media
-        download_trim_upload_and_send_media(message, url, None, None)
+        # Handle download and upload to Mega
+        download_and_send_media(message, url)
 
     except IndexError:
         bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
