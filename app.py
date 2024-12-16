@@ -1,6 +1,5 @@
 import os
 import logging
-import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -66,18 +65,18 @@ def download_media(url):
         raise
 
 # Mega.nz login and upload
-def mega_login():
+def mega_login(username, password):
     global mega_session
-    email = os.getenv('MEGA_EMAIL')
-    password = os.getenv('MEGA_PASSWORD')
-    if email and password:
-        mega_session = mega_client.login(email, password)
+    try:
+        mega_session = mega_client.login(username, password)
         logging.info("Logged into Mega.nz successfully.")
-    else:
-        logging.error("Mega.nz login credentials not found.")
+        return mega_session
+    except Exception as e:
+        logging.error("Mega.nz login failed", exc_info=True)
+        return None
 
 # Download and upload to Mega
-def download_and_upload_to_mega(message, url):
+def download_and_upload_to_mega(message, url, username, password):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -86,12 +85,19 @@ def download_and_upload_to_mega(message, url):
         bot2.reply_to(message, "Downloading media, please wait...")
         file_path = download_media(url)
 
-        # Upload to Mega.nz if logged in
-        if mega_session:
-            bot2.reply_to(message, "Uploading to Mega.nz...")
-            uploaded_file = mega_session.upload(file_path)
-            upload_link = mega_session.get_upload_link(uploaded_file)
-            bot2.reply_to(message, f"File uploaded to Mega.nz: {upload_link}")
+        # Login to Mega.nz
+        mega_session = mega_login(username, password)
+        if not mega_session:
+            bot2.reply_to(message, "Failed to login to Mega.nz. Please check your username and password.")
+            return
+
+        # Upload to Mega.nz
+        bot2.reply_to(message, "Uploading to Mega.nz...")
+        uploaded_file = mega_session.upload(file_path)
+        upload_link = mega_session.get_upload_link(uploaded_file)
+
+        # Send Mega.nz link to the user
+        bot2.reply_to(message, f"File uploaded to Mega.nz: {upload_link}")
 
         # Send the file back to the user
         with open(file_path, 'rb') as media:
@@ -110,13 +116,23 @@ def download_and_upload_to_mega(message, url):
         bot2.reply_to(message, f"Download failed: {str(e)}")
 
 # Telegram command handlers
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
+@bot2.message_handler(commands=['meganz'])
+def handle_mega_login(message):
     try:
-        url = message.text.split(maxsplit=1)[1]  # Get the URL after the /mega command
-        download_and_upload_to_mega(message, url)
+        # Expecting the format /meganz username password url
+        args = message.text.split(maxsplit=3)
+        if len(args) < 4:
+            bot2.reply_to(message, "Usage: /meganz <username> <password> <URL>")
+            return
+
+        username = args[1]
+        password = args[2]
+        url = args[3]
+
+        download_and_upload_to_mega(message, url, username, password)
+
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the /mega command.")
+        bot2.reply_to(message, "Please provide valid arguments: /meganz <username> <password> <URL>.")
 
 # Flask app setup
 app = Flask(__name__)
@@ -133,7 +149,5 @@ def set_webhook():
     return "Webhook set", 200
 
 if __name__ == "__main__":
-    # Login to Mega.nz
-    mega_login()
-
+    # Run Flask app to handle incoming webhook requests
     app.run(host='0.0.0.0', port=8080, debug=True)
