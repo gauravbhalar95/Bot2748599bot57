@@ -5,7 +5,6 @@ import telebot
 import yt_dlp
 from mega import Mega
 import re
-from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -29,7 +28,7 @@ logging.basicConfig(level=logging.DEBUG)
 mega_client = Mega()
 mega_session = None
 
-# Supported domains for download
+# Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Sanitize filename
@@ -65,16 +64,24 @@ def download_media(url):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-# Mega.nz login and upload
-def mega_login(username, password):
+# Mega.nz login function with retries
+def mega_login(username, password, retries=3):
     global mega_session
-    try:
-        mega_session = mega_client.login(username, password)
-        logging.info("Logged into Mega.nz successfully.")
-        return mega_session
-    except Exception as e:
-        logging.error("Mega.nz login failed", exc_info=True)
-        return None
+    attempt = 0
+    while attempt < retries:
+        try:
+            # Attempt to login to Mega.nz
+            mega_session = mega_client.login(username, password)
+            logging.info("Logged into Mega.nz successfully.")
+            return mega_session
+        except Exception as e:
+            attempt += 1
+            logging.error(f"Mega.nz login failed (Attempt {attempt}/{retries}): {str(e)}")
+            if attempt < retries:
+                logging.info("Retrying login...")
+            else:
+                logging.error("Max retries reached. Unable to login.")
+                return None
 
 # Download and upload to Mega
 def download_and_upload_to_mega(message, url, username, password):
