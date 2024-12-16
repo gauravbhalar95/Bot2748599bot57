@@ -3,8 +3,9 @@ import logging
 from flask import Flask, request
 import telebot
 import yt_dlp
-from mega import Mega
 import re
+import subprocess
+from mega import Mega  # Mega.nz Python library
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -26,6 +27,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+
+# Mega client (will be initialized later after login)
+mega_client = None
 
 # Sanitize filename
 def sanitize_filename(filename, max_length=250):
@@ -60,77 +64,118 @@ def download_media(url):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-# Mega.nz login and upload
-def mega_login(username, password):
+# Trim video using ffmpeg
+def trim_video(input_path, start_time, end_time):
+    output_path = f"{output_dir}trimmed_{sanitize_filename(input_path)}"
     try:
-        mega_client = Mega()
-        # Attempt to login to Mega.nz with provided credentials
-        mega_session = mega_client.login(username, password)
-        logging.info(f"Logged into Mega.nz as {username} successfully.")
-        return mega_session
-    except Exception as e:
-        logging.error(f"Mega.nz login failed for {username}: {str(e)}")
-        return None
+        subprocess.run([
+            'ffmpeg', '-i', input_path,
+            '-ss', start_time, '-to', end_time, '-c:v', 'libx264', '-c:a', 'aac',
+            '-strict', 'experimental', output_path
+        ], check=True)
+        return output_path
+    except subprocess.CalledProcessError as e:
+        logging.error("FFmpeg error during trimming", exc_info=True)
+        raise
 
-# Download and upload to Mega
-def download_and_upload_to_mega(message, url, username, password):
+# Upload to Mega
+def upload_to_mega(file_path):
+    if mega_client is None:
+        raise Exception("Mega client is not initialized. Please log in first using /meganz <username> <password>.")
+
+    # Upload the file to Mega
+    try:
+        file = mega_client.upload(file_path)
+        return file
+    except Exception as e:
+        logging.error("Mega upload error", exc_info=True)
+        raise
+
+# Download, trim, upload and send media
+def download_trim_upload_and_send_media(message, url, start_time, end_time):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
 
     try:
-        bot2.reply_to(message, "Downloading media, please wait...")
+        bot2.reply_to(message, "Downloading video, please wait...")
         file_path = download_media(url)
 
-        # Login to Mega.nz with user credentials
-        mega_session = mega_login(username, password)
-        if not mega_session:
-            bot2.reply_to(message, "Failed to login to Mega.nz. Please check your username and password.")
-            return
+        # Trim the video
+        trimmed_file_path = trim_video(file_path, start_time, end_time)
 
-        # Upload to Mega.nz
-        bot2.reply_to(message, "Uploading to Mega.nz...")
-        uploaded_file = mega_session.upload(file_path)
-        upload_link = mega_session.get_upload_link(uploaded_file)
+        # Upload to Mega
+        mega_file = upload_to_mega(trimmed_file_path)
 
-        # Send Mega.nz link to the user
-        bot2.reply_to(message, f"File uploaded to Mega.nz: {upload_link}")
+        # Send the Mega link back to the user
+        mega_link = mega_file['link']
+        bot2.reply_to(message, f"Video trimmed successfully! The file has been uploaded to Mega: {mega_link}")
 
-        # Send the file back to the user
-        with open(file_path, 'rb') as media:
-            if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                bot2.send_photo(message.chat.id, media)
-            elif file_path.lower().endswith('.mp4'):
-                bot2.send_video(message.chat.id, media)
-            else:
-                bot2.send_document(message.chat.id, media)
-
-        # Clean up
+        # Clean up the downloaded and trimmed files
         os.remove(file_path)
-        bot2.reply_to(message, "Download, upload, and sharing completed.")
+        os.remove(trimmed_file_path)
+        bot2.reply_to(message, "Download, trim and upload completed.")
     except Exception as e:
-        logging.error("Download failed", exc_info=True)
-        bot2.reply_to(message, f"Download failed: {str(e)}")
+        logging.error("Download, trim, or upload failed", exc_info=True)
+        bot2.reply_to(message, f"Download, trim, or upload failed: {str(e)}")
 
-# Telegram command handlers
+# Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
-        # Expecting the format /meganz username password url
-        args = message.text.split(maxsplit=3)
-        if len(args) < 4:
-            bot2.reply_to(message, "Usage: /meganz <username> <password> <URL>")
+        # Expecting the format /meganz <username> <password>
+        args = message.text.split(maxsplit=2)
+        if len(args) < 3:
+            bot2.reply_to(message, "Usage: /meganz <username> <password>")
             return
 
         username = args[1]
         password = args[2]
-        url = args[3]
 
-        # Handle login and file upload
-        download_and_upload_to_mega(message, url, username, password)
+        # Log in to Mega
+        global mega_client
+        mega_client = Mega().login(username, password)
+        bot2.reply_to(message, "Successfully logged in to Mega!")
+
+    except Exception as e:
+        bot2.reply_to(message, f"Login failed: {str(e)}")
+
+# Telegram command handler for trimming and uploading to Mega
+@bot2.message_handler(commands=['trim'])
+def handle_trim(message):
+    try:
+        # Expecting the format /trim <URL> <start_time> <end_time>
+        args = message.text.split(maxsplit=3)
+        if len(args) < 4:
+            bot2.reply_to(message, "Usage: /trim <URL> <start_time> <end_time>")
+            return
+
+        url = args[1]
+        start_time = args[2]
+        end_time = args[3]
+
+        # Handle download, trim, upload to Mega and send media
+        download_trim_upload_and_send_media(message, url, start_time, end_time)
 
     except IndexError:
-        bot2.reply_to(message, "Please provide valid arguments: /meganz <username> <password> <URL>.")
+        bot2.reply_to(message, "Please provide a valid URL, start time, and end time after the command: /trim <URL> <start_time> <end_time>.")
+
+# Telegram command handler for download and upload to Mega
+@bot2.message_handler(commands=['mega'])
+def handle_mega(message):
+    try:
+        # Expecting the format /mega <URL>
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            bot2.reply_to(message, "Usage: /mega <URL>")
+            return
+
+        url = args[1]
+        # Handle download, upload to Mega and send media
+        download_trim_upload_and_send_media(message, url, None, None)
+
+    except IndexError:
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
 
 # Flask app setup
 app = Flask(__name__)
