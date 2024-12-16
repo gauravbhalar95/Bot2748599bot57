@@ -24,10 +24,6 @@ if not os.path.exists(output_dir):
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
-# Mega.nz login details
-mega_client = Mega()
-mega_session = None
-
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
@@ -64,16 +60,16 @@ def download_media(url):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-# Mega.nz login function
+# Mega.nz login and upload
 def mega_login(username, password):
-    global mega_session
     try:
-        # Attempt to login to Mega.nz
+        mega_client = Mega()
+        # Attempt to login to Mega.nz with provided credentials
         mega_session = mega_client.login(username, password)
-        logging.info("Logged into Mega.nz successfully.")
+        logging.info(f"Logged into Mega.nz as {username} successfully.")
         return mega_session
     except Exception as e:
-        logging.error(f"Mega.nz login failed: {str(e)}")
+        logging.error(f"Mega.nz login failed for {username}: {str(e)}")
         return None
 
 # Download and upload to Mega
@@ -86,7 +82,7 @@ def download_and_upload_to_mega(message, url, username, password):
         bot2.reply_to(message, "Downloading media, please wait...")
         file_path = download_media(url)
 
-        # Login to Mega.nz
+        # Login to Mega.nz with user credentials
         mega_session = mega_login(username, password)
         if not mega_session:
             bot2.reply_to(message, "Failed to login to Mega.nz. Please check your username and password.")
@@ -130,6 +126,7 @@ def handle_mega_login(message):
         password = args[2]
         url = args[3]
 
+        # Handle login and file upload
         download_and_upload_to_mega(message, url, username, password)
 
     except IndexError:
