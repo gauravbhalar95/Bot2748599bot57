@@ -149,7 +149,6 @@ def download_and_send(message, url, start_time=None, end_time=None):
         logging.error("Download failed:", exc_info=True)
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
 
-
 # Mega.nz login and download functionality
 mega_client = Mega()
 mega_session = None  # Store the session after login
@@ -198,6 +197,20 @@ def handle_links(message):
         threading.Thread(target=download_and_send, args=(message, url, start_time, end_time)).start()
     else:
         bot2.reply_to(message, "Invalid input. Please provide a valid URL and optional time parameters (e.g., 'https://youtu.be/qmYGd0V4qJY 01:19:10 01:21:48').")
+
+# PDF Guide Functionality
+def send_welcome_guide(chat_id):
+    try:
+        with open("bot_features_guide.pdf", "rb") as pdf:
+            bot2.send_document(chat_id, pdf)
+    except Exception as e:
+        bot2.send_message(chat_id, "Failed to send the guide. Please try again later.")
+        print(f"Error sending guide: {e}")
+
+@bot2.message_handler(commands=['start'])
+def send_welcome(message):
+    bot2.reply_to(message, "Welcome to the bot! Here's a guide to help you understand its features.")
+    send_welcome_guide(message.chat.id)
 
 # Flask app setup
 app = Flask(__name__)
