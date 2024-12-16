@@ -5,6 +5,7 @@ import telebot
 import yt_dlp
 from mega import Mega
 import re
+from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -28,7 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 mega_client = Mega()
 mega_session = None
 
-# Supported domains
+# Supported domains for download
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Sanitize filename
