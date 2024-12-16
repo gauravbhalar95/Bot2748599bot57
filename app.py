@@ -6,6 +6,7 @@ import yt_dlp
 import re
 import subprocess
 from mega import Mega  # Mega.nz Python library
+from urllib.parse import urlparse
 
 # Load API tokens and channel IDs from environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
