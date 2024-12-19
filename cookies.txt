@@ -29,7 +29,7 @@
 .instagram.com	TRUE	/	TRUE	1760377231	csrftoken	OLmkLuCpOv3gy6gjI6usYqUYEDv9DF95
 .instagram.com	TRUE	/	TRUE	1760433017	sessionid	67842185883%3AXX6WpvnbBf1Bd3%3A9%3AAYcrG0tXbjy7GazzA-0Hj8hMFvHfQEtbgggDN2uvlg
 .instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541760463631:01f7d13afc6ef4a9a48bc8e5e673f94030c452a70a4e7d14bf0c40f3ee98730f6ab92dbd"
-
+yt-dlp --cookies cookies.txt https://www.instagram.com/username/
 
 
 # Netscape HTTP Cookie File
