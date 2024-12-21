@@ -157,7 +157,7 @@ def handle_instagram_profile(message):
             return
 
         profile_url = args[1].strip()
-        
+
         # Check if the URL is a valid Instagram profile link
         if 'instagram.com' not in profile_url or '/p/' in profile_url:
             bot2.reply_to(message, "Please provide a valid Instagram profile URL (not a post or reel).")
