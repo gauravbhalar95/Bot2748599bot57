@@ -85,7 +85,6 @@ def upload_to_mega(file_path):
 def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
-        logging.error(f"Invalid URL received: {url}")
         return
 
     try:
@@ -192,15 +191,10 @@ def handle_instagram_profile(message):
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
     url = message.text.strip()
-    
-    # Debug the URL for any possible issues
-    logging.debug(f"Received URL: {url}")
-    
     if is_valid_url(url):
         handle_download_and_upload(message, url, upload_to_mega_flag=False)
     else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video. Supported platforms include YouTube, Instagram, Facebook, etc.")
-        logging.error(f"Invalid URL received: {url}")
+        bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
 # Flask app for webhook
 app = Flask(__name__)
