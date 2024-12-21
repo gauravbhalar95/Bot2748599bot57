@@ -18,7 +18,6 @@ bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 # Directories
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
-support_sites_file = 'supportsite.txt'  # File containing supported domains
 
 # Ensure downloads directory exists
 if not os.path.exists(output_dir):
@@ -27,19 +26,8 @@ if not os.path.exists(output_dir):
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
-# Load supported domains from file
-def load_supported_domains():
-    try:
-        with open(support_sites_file, 'r') as file:
-            return [line.strip() for line in file if line.strip()]
-    except FileNotFoundError:
-        logging.error(f"{support_sites_file} not found. Please ensure the file exists.")
-        return []
-
-SUPPORTED_DOMAINS = load_supported_domains()
-
-if not SUPPORTED_DOMAINS:
-    logging.warning("No supported domains found in supportsite.txt. The bot may not function correctly.")
+# Supported domains
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'instagram:user', 'instagram:story', 'Popcorntimes', 'PopcornTV', 'Pornbox']
 
 # Mega client
 mega_client = None
@@ -96,7 +84,7 @@ def upload_to_mega(file_path):
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
-        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms are listed in supportsite.txt.")
+        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
 
     try:
@@ -158,6 +146,46 @@ def handle_mega(message):
         handle_download_and_upload(message, url, upload_to_mega_flag=True)
     except IndexError:
         bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+
+# Add /profile command to fetch Instagram profile and download all posts
+@bot2.message_handler(commands=['profile'])
+def handle_instagram_profile(message):
+    try:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            bot2.reply_to(message, "Usage: /profile <Instagram Profile URL>")
+            return
+
+        profile_url = args[1].strip()
+        
+        # Check if the URL is a valid Instagram profile link
+        if 'instagram.com' not in profile_url or '/p/' in profile_url:
+            bot2.reply_to(message, "Please provide a valid Instagram profile URL (not a post or reel).")
+            return
+
+        bot2.reply_to(message, "Fetching posts from the Instagram profile, please wait...")
+
+        # Set yt-dlp options for profile download
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'outtmpl': f'{output_dir}{sanitize_filename("%(uploader)s")}/%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'socket_timeout': 10,
+            'retries': 5,
+            'quiet': False,
+            'extract_flat': False,  # Ensure full download
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(profile_url, download=True)
+                bot2.reply_to(message, f"Successfully downloaded all posts from {info_dict['uploader']}'s profile.")
+        except Exception as e:
+            logging.error("yt-dlp Instagram profile download error", exc_info=True)
+            bot2.reply_to(message, f"Failed to download posts: {str(e)}")
+    except Exception as e:
+        logging.error("Instagram profile handler error", exc_info=True)
+        bot2.reply_to(message, f"An error occurred: {str(e)}")
 
 # Direct download without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
