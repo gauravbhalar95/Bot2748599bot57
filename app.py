@@ -137,10 +137,17 @@ def handle_mega_login(message):
         username = args[1]
         password = args[2]
 
+        logging.debug(f"Attempting login with username: {username}")
         global mega_client
         mega_client = Mega().login(username, password)
+
+        if not mega_client:
+            bot2.reply_to(message, "Login failed: Invalid credentials or unexpected response from Mega.nz.")
+            return
+
         bot2.reply_to(message, "Successfully logged in to Mega.nz!")
     except Exception as e:
+        logging.error("Mega.nz login failed", exc_info=True)
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 # Download and upload to Mega.nz with optional folder
