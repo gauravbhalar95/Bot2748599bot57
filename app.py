@@ -27,7 +27,10 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'instagram:user.com', 'instagram:story.com', 'Popcorntimes.com', 'PopcornTV.com', 'Pornbox.com', 'XXXYMovies.com', 'VuClip.com', 'XHamster.com', 'XNXX.com', 'XVideos.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 
+                     'instagram:user.com', 'instagram:story.com', 'Popcorntimes.com', 
+                     'PopcornTV.com', 'Pornbox.com', 'XXXYMovies.com', 'VuClip.com', 
+                     'XHamster.com', 'XNXX.com', 'XVideos.com']
 
 # Mega client
 mega_client = None
@@ -46,10 +49,10 @@ def is_valid_url(url):
         return False
 
 # Download media using yt-dlp
-def download_media(url, start_time=None, end_time=None):
+def download_media(url, download_dir, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{download_dir}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
@@ -81,8 +84,8 @@ def upload_to_mega(file_path):
         logging.error("Error uploading to Mega", exc_info=True)
         raise
 
-# Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
+# Handle download and upload logic with optional folder
+def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -96,8 +99,15 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
+        # Set download directory if folder name is provided
+        download_dir = output_dir
+        if folder_name:
+            download_dir = os.path.join(output_dir, sanitize_filename(folder_name))
+            if not os.path.exists(download_dir):
+                os.makedirs(download_dir)
+
         # Download media
-        file_path = download_media(url, start_time, end_time)
+        file_path = download_media(url, download_dir, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
@@ -133,68 +143,20 @@ def handle_mega_login(message):
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-# Download and upload to Mega.nz
+# Download and upload to Mega.nz with optional folder
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [<folder_name>]")
             return
 
         url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
+        folder_name = args[2] if len(args) > 2 else None
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
-
-# Add /profile command to fetch Instagram profile and download all posts
-@bot2.message_handler(commands=['profile'])
-def handle_instagram_profile(message):
-    try:
-        args = message.text.split(maxsplit=1)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /profile <Instagram Profile URL>")
-            return
-
-        profile_url = args[1].strip()
-
-        # Check if the URL is a valid Instagram profile link
-        if 'instagram.com' not in profile_url or '/p/' in profile_url:
-            bot2.reply_to(message, "Please provide a valid Instagram profile URL (not a post or reel).")
-            return
-
-        bot2.reply_to(message, "Fetching posts from the Instagram profile, please wait...")
-
-        # Set yt-dlp options for profile download
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': f'{output_dir}{sanitize_filename("%(uploader)s")}/%(title)s.%(ext)s',
-            'cookiefile': cookies_file,
-            'socket_timeout': 10,
-            'retries': 5,
-            'quiet': False,
-            'extract_flat': False,  # Ensure full download
-        }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(profile_url, download=True)
-                bot2.reply_to(message, f"Successfully downloaded all posts from {info_dict['uploader']}'s profile.")
-        except Exception as e:
-            logging.error("yt-dlp Instagram profile download error", exc_info=True)
-            bot2.reply_to(message, f"Failed to download posts: {str(e)}")
-    except Exception as e:
-        logging.error("Instagram profile handler error", exc_info=True)
-        bot2.reply_to(message, f"An error occurred: {str(e)}")
-
-# Direct download without Mega.nz
-@bot2.message_handler(func=lambda message: True, content_types=['text'])
-def handle_direct_download(message):
-    url = message.text.strip()
-    if is_valid_url(url):
-        handle_download_and_upload(message, url, upload_to_mega_flag=False)
-    else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [<folder_name>].")
 
 # Flask app for webhook
 app = Flask(__name__)
