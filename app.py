@@ -24,7 +24,16 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging configuration
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("bot_log.log"),  # Save logs to a file
+        logging.StreamHandler()  # Print logs to console
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 
@@ -50,6 +59,7 @@ def is_valid_url(url):
 
 # Download media using yt-dlp
 def download_media(url, download_dir, start_time=None, end_time=None):
+    logger.info(f"Starting download for URL: {url}")
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{download_dir}/{sanitize_filename("%(title)s")}.%(ext)s',
@@ -66,26 +76,30 @@ def download_media(url, download_dir, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+        logger.info(f"Download completed: {file_path}")
         return file_path
     except Exception as e:
-        logging.error("yt-dlp download error", exc_info=True)
+        logger.error("yt-dlp download error", exc_info=True)
         raise
 
 # Upload file to Mega.nz
 def upload_to_mega(file_path):
+    logger.info(f"Starting upload to Mega.nz for file: {file_path}")
     if mega_client is None:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
         file = mega_client.upload(file_path)
         public_link = mega_client.get_upload_link(file)
+        logger.info(f"File uploaded to Mega.nz: {public_link}")
         return public_link
     except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
+        logger.error("Error uploading to Mega", exc_info=True)
         raise
 
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
+    logger.info(f"Received URL: {url}")
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -114,8 +128,9 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 
         # Cleanup
         os.remove(file_path)
+        logger.info(f"File deleted: {file_path}")
     except Exception as e:
-        logging.error("Download or upload failed", exc_info=True)
+        logger.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 # Mega login command with stored credentials
@@ -130,12 +145,13 @@ def handle_mega_login(message):
         username = args[1]
         password = args[2]
 
-        logging.debug(f"Attempting login with username: {username}")
+        logger.debug(f"Attempting login with username: {username}")
         global mega_client
         mega_client = Mega().login(username, password)
 
         if not mega_client:
             bot2.reply_to(message, "Login failed: Invalid credentials or unexpected response from Mega.nz.")
+            logger.warning("Mega.nz login failed.")
             return
 
         # Store credentials (ensure secure storage in production)
@@ -143,8 +159,9 @@ def handle_mega_login(message):
             cred_file.write(f"{username}\n{password}")
 
         bot2.reply_to(message, "Successfully logged in to Mega.nz and credentials stored!")
+        logger.info("Mega.nz login successful.")
     except Exception as e:
-        logging.error("Mega.nz login failed", exc_info=True)
+        logger.error("Mega.nz login failed", exc_info=True)
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 # Download and upload to Mega.nz
@@ -176,4 +193,5 @@ def set_webhook():
     return "Webhook set", 200
 
 if __name__ == "__main__":
+    logger.info("Starting Flask app...")
     app.run(host='0.0.0.0', port=8080, debug=True)
