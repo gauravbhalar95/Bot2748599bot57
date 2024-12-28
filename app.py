@@ -6,6 +6,7 @@ import yt_dlp
 import re
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -31,6 +32,9 @@ SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'faceb
 
 # Mega client
 mega_client = None
+
+# User sessions for login/logout
+user_sessions = {}
 
 
 # Sanitize filenames for downloaded files
@@ -125,7 +129,6 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
-        logging.debug(f"Received /meganz command: {message.text}")
         args = message.text.split(maxsplit=2)
         if len(args) < 3:
             bot2.reply_to(message, "Usage: /meganz <username> <password>")
@@ -133,18 +136,15 @@ def handle_mega_login(message):
 
         username = args[1]
         password = args[2]
-        logging.debug(f"Attempting to log in with username: {username}")
 
         global mega_client
         mega_client = Mega().login(username, password)
         if mega_client is not None:
             bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-            logging.debug("Login successful")
         else:
             bot2.reply_to(message, "Login failed. Mega client is None.")
-            logging.debug("Mega client is None")
     except Exception as e:
-        logging.error(f"Login failed: {str(e)}")
+        logging.error("Login failed", exc_info=True)
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
@@ -159,8 +159,8 @@ def handle_mega(message):
 
         url = args[1]
         handle_download_and_upload(message, url, upload_to_mega_flag=True)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+    except Exception as e:
+        bot2.reply_to(message, f"An error occurred: {str(e)}")
 
 
 # Direct download without Mega.nz
@@ -173,9 +173,20 @@ def handle_direct_download(message):
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
 
-# /start command
+# /start command with Login and Logout buttons
 @bot2.message_handler(commands=['start'])
 def handle_start(message):
+    user_id = message.chat.id
+    is_logged_in = user_id in user_sessions
+
+    # Inline keyboard for Login and Logout
+    keyboard = InlineKeyboardMarkup()
+    if is_logged_in:
+        keyboard.add(InlineKeyboardButton("Logout", callback_data="logout"))
+    else:
+        login_url = f"https://your-auth-service.com/login?user_id={user_id}"
+        keyboard.add(InlineKeyboardButton("Login", url=login_url))
+
     bot2.reply_to(
         message,
         f"Hello, {message.from_user.first_name}!\n\n"
@@ -186,8 +197,39 @@ def handle_start(message):
         "• /meganz <username> <password> - Login to Mega.nz.\n"
         "• /mega <URL> - Download and upload to Mega.nz.\n"
         "• Paste a valid URL to download directly.\n\n"
-        "Enjoy!"
+        f"{'You are logged in!' if is_logged_in else 'Please log in to continue.'}",
+        reply_markup=keyboard
     )
+
+
+# Callback query handler for Logout
+@bot2.callback_query_handler(func=lambda call: call.data == "logout")
+def handle_logout(call):
+    user_id = call.message.chat.id
+    if user_id in user_sessions:
+        del user_sessions[user_id]  # Remove user session
+        bot2.answer_callback_query(call.id, "You have been logged out.")
+        bot2.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="You have successfully logged out.\n\nClick /start to log in again."
+        )
+    else:
+        bot2.answer_callback_query(call.id, "You are not logged in.")
+
+
+# Endpoint to handle login redirection
+@app.route('/login_redirect', methods=['GET'])
+def login_redirect():
+    user_id = request.args.get('user_id')
+    if user_id:
+        user_sessions[int(user_id)] = True  # Mark user as logged in
+        bot2.send_message(
+            int(user_id),
+            "You have successfully logged in! 🎉\n\nClick /start to begin using the bot."
+        )
+        return "Login successful! You can close this page.", 200
+    return "Invalid login attempt.", 400
 
 
 # Flask app for webhook
