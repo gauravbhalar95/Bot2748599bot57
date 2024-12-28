@@ -84,8 +84,8 @@ def upload_to_mega(file_path):
         logging.error("Error uploading to Mega", exc_info=True)
         raise
 
-# Handle download and upload logic with optional folder
-def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
+# Handle download and upload logic
+def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -99,15 +99,8 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=No
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
-        # Set download directory if folder name is provided
-        download_dir = output_dir
-        if folder_name:
-            download_dir = os.path.join(output_dir, sanitize_filename(folder_name))
-            if not os.path.exists(download_dir):
-                os.makedirs(download_dir)
-
         # Download media
-        file_path = download_media(url, download_dir, start_time, end_time)
+        file_path = download_media(url, output_dir, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
@@ -125,7 +118,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=No
         logging.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
-# Mega login command
+# Mega login command with stored credentials
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
@@ -145,25 +138,28 @@ def handle_mega_login(message):
             bot2.reply_to(message, "Login failed: Invalid credentials or unexpected response from Mega.nz.")
             return
 
-        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+        # Store credentials (ensure secure storage in production)
+        with open("mega_credentials.txt", "w") as cred_file:
+            cred_file.write(f"{username}\n{password}")
+
+        bot2.reply_to(message, "Successfully logged in to Mega.nz and credentials stored!")
     except Exception as e:
         logging.error("Mega.nz login failed", exc_info=True)
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-# Download and upload to Mega.nz with optional folder
+# Download and upload to Mega.nz
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=2)
+        args = message.text.split(maxsplit=1)
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL> [<folder_name>]")
+            bot2.reply_to(message, "Usage: /mega <URL>")
             return
 
         url = args[1]
-        folder_name = args[2] if len(args) > 2 else None
-        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
+        handle_download_and_upload(message, url, upload_to_mega_flag=True)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [<folder_name>].")
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
 
 # Flask app for webhook
 app = Flask(__name__)
