@@ -6,6 +6,7 @@ import yt_dlp
 import re
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -163,54 +164,48 @@ def handle_direct_download(message):
     else:
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
-# /start command with Login and Logout commands
+# /start command with Login and Logout buttons
 @bot2.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.chat.id
     is_logged_in = user_id in user_sessions
 
+    # Inline keyboard for Login and Logout
+    keyboard = InlineKeyboardMarkup()
     if is_logged_in:
-        bot2.reply_to(
-            message,
-            f"Hello, {message.from_user.first_name}!\n\n"
-            "You are already logged in.\n\n"
-            "Commands:\n"
-            "• /logout - Log out from Mega.nz.\n"
-            "• /meganz <username> <password> - Login to Mega.nz.\n"
-            "• /mega <URL> - Download and upload to Mega.nz.\n"
-            "• Paste a valid URL to download directly."
-        )
+        keyboard.add(InlineKeyboardButton("Logout", callback_data="logout"))
     else:
-        bot2.reply_to(
-            message,
-            f"Hello, {message.from_user.first_name}!\n\n"
-            "You are not logged in.\n\n"
-            "Commands:\n"
-            "• /login - Log in to Mega.nz.\n"
-            "• /meganz <username> <password> - Login to Mega.nz.\n"
-            "• /mega <URL> - Download and upload to Mega.nz.\n"
-            "• Paste a valid URL to download directly."
-        )
+        login_url = f"https://mega.nz/login?user_id={user_id}"
+        keyboard.add(InlineKeyboardButton("Login", url=login_url))
 
-# /login command to login
-@bot2.message_handler(commands=['login'])
-def handle_login(message):
-    user_id = message.chat.id
-    if user_id not in user_sessions:
-        user_sessions[user_id] = True  # Mark as logged in
-        bot2.reply_to(message, "You have been logged in successfully.")
-    else:
-        bot2.reply_to(message, "You are already logged in.")
+    bot2.reply_to(
+        message,
+        f"Hello, {message.from_user.first_name}!\n\n"
+        "I am your Media Downloader bot. Here's what I can do:\n\n"
+        "✅ Download videos from supported platforms.\n"
+        "✅ Upload videos to Mega.nz.\n\n"
+        "Commands:\n"
+        "• /meganz <username> <password> - Login to Mega.nz.\n"
+        "• /mega <URL> - Download and upload to Mega.nz.\n"
+        "• Paste a valid URL to download directly.\n\n"
+        f"{'You are logged in!' if is_logged_in else 'Please log in to continue.'}",
+        reply_markup=keyboard
+    )
 
-# /logout command to logout
-@bot2.message_handler(commands=['logout'])
-def handle_logout(message):
-    user_id = message.chat.id
+# Callback query handler for Logout
+@bot2.callback_query_handler(func=lambda call: call.data == "logout")
+def handle_logout(call):
+    user_id = call.message.chat.id
     if user_id in user_sessions:
         del user_sessions[user_id]  # Remove user session
-        bot2.reply_to(message, "You have been logged out successfully.")
+        bot2.answer_callback_query(call.id, "You have been logged out.")
+        bot2.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text="You have successfully logged out.\n\nClick /start to log in again."
+        )
     else:
-        bot2.reply_to(message, "You are not logged in.")
+        bot2.answer_callback_query(call.id, "You are not logged in.")
 
 # Flask app for webhook
 app = Flask(__name__)
