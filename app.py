@@ -54,7 +54,8 @@ def is_valid_url(url):
     try:
         result = urlparse(url)
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
-    except ValueError:
+    except ValueError as e:
+        logger.error(f"Error validating URL: {str(e)}")
         return False
 
 # Download media using yt-dlp
@@ -133,64 +134,28 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         logger.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
-# Mega login command with stored credentials
-@bot2.message_handler(commands=['meganz'])
-def handle_mega_login(message):
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) < 3:
-            bot2.reply_to(message, "Usage: /meganz <username> <password>")
-            return
-
-        username = args[1]
-        password = args[2]
-
-        logger.debug(f"Attempting login with username: {username}")
-        global mega_client
-        mega_client = Mega().login(username, password)
-
-        if not mega_client:
-            bot2.reply_to(message, "Login failed: Invalid credentials or unexpected response from Mega.nz.")
-            logger.warning("Mega.nz login failed.")
-            return
-
-        # Store credentials (ensure secure storage in production)
-        with open("mega_credentials.txt", "w") as cred_file:
-            cred_file.write(f"{username}\n{password}")
-
-        bot2.reply_to(message, "Successfully logged in to Mega.nz and credentials stored!")
-        logger.info("Mega.nz login successful.")
-    except Exception as e:
-        logger.error("Mega.nz login failed", exc_info=True)
-        bot2.reply_to(message, f"Login failed: {str(e)}")
-
-# Download and upload to Mega.nz
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=1)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
-            return
-
-        url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
-
 # Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN_2, methods=['POST'])
 def bot_webhook():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
+    try:
+        bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+        return "!", 200
+    except Exception as e:
+        logger.error("Error processing webhook", exc_info=True)
+        return "Error", 500
 
 @app.route('/')
 def set_webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
+    try:
+        bot2.remove_webhook()
+        bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
+        logger.info("Webhook set successfully.")
+        return "Webhook set", 200
+    except Exception as e:
+        logger.error("Error setting webhook", exc_info=True)
+        return "Error", 500
 
 if __name__ == "__main__":
     logger.info("Starting Flask app...")
