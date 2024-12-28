@@ -4,9 +4,13 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
 from mega import Mega  # Mega.nz Python library
+import http.client as http_client
+
+# Enable HTTP-level debugging for Mega.nz interactions
+http_client.HTTPConnection.debuglevel = 1
+logging.getLogger("http.client").setLevel(logging.DEBUG)
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -25,20 +29,30 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging configuration
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("bot_log.log"),  # Save logs to a file
+        logging.StreamHandler()  # Print logs to console
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 
+                     'instagram:user.com', 'instagram:story.com', 'Popcorntimes.com', 
+                     'PopcornTV.com', 'Pornbox.com', 'XXXYMovies.com', 'VuClip.com', 
+                     'XHamster.com', 'XNXX.com', 'XVideos.com']
 
 # Mega client
 mega_client = None
-
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
-
 
 # Check if a URL is valid and supported
 def is_valid_url(url):
@@ -48,12 +62,12 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-
 # Download media using yt-dlp
-def download_media(url, start_time=None, end_time=None):
+def download_media(url, download_dir, start_time=None, end_time=None):
+    logger.info(f"Starting download for URL: {url}")
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{download_dir}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
@@ -67,28 +81,30 @@ def download_media(url, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+        logger.info(f"Download completed: {file_path}")
         return file_path
     except Exception as e:
-        logging.error("yt-dlp download error", exc_info=True)
+        logger.error("yt-dlp download error", exc_info=True)
         raise
-
 
 # Upload file to Mega.nz
 def upload_to_mega(file_path):
+    logger.info(f"Starting upload to Mega.nz for file: {file_path}")
     if mega_client is None:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
         file = mega_client.upload(file_path)
         public_link = mega_client.get_upload_link(file)
+        logger.info(f"File uploaded to Mega.nz: {public_link}")
         return public_link
     except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
+        logger.error("Error uploading to Mega", exc_info=True)
         raise
-
 
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
+    logger.info(f"Received URL: {url}")
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -103,7 +119,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         end_time = query_params.get('end', [None])[0]
 
         # Download media
-        file_path = download_media(url, start_time, end_time)
+        file_path = download_media(url, output_dir, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
@@ -117,12 +133,12 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 
         # Cleanup
         os.remove(file_path)
+        logger.info(f"File deleted: {file_path}")
     except Exception as e:
-        logging.error("Download or upload failed", exc_info=True)
+        logger.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
-
-# Mega login command
+# Mega login command with debugging
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
@@ -134,37 +150,20 @@ def handle_mega_login(message):
         username = args[1]
         password = args[2]
 
+        logger.debug(f"Attempting login with username: {username}")
         global mega_client
         mega_client = Mega().login(username, password)
-        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-    except Exception as e:
-        bot2.reply_to(message, f"Login failed: {str(e)}")
 
-
-# Download and upload to Mega.nz
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=1)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+        if not mega_client:
+            bot2.reply_to(message, "Login failed: Invalid credentials or unexpected response from Mega.nz.")
+            logger.warning("Mega.nz login failed.")
             return
 
-        url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
-
-
-# Direct download without Mega.nz
-@bot2.message_handler(func=lambda message: True, content_types=['text'])
-def handle_direct_download(message):
-    url = message.text.strip()
-    if is_valid_url(url):
-        handle_download_and_upload(message, url, upload_to_mega_flag=False)
-    else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
-
+        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+        logger.info("Mega.nz login successful.")
+    except Exception as e:
+        logger.error("Mega.nz login failed", exc_info=True)
+        bot2.reply_to(message, f"Login failed: {str(e)}")
 
 # Flask app for webhook
 app = Flask(__name__)
@@ -174,13 +173,12 @@ def bot_webhook():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
-
 @app.route('/')
 def set_webhook():
     bot2.remove_webhook()
     bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
 
-
 if __name__ == "__main__":
+    logger.info("Starting Flask app...")
     app.run(host='0.0.0.0', port=8080, debug=True)
