@@ -4,9 +4,8 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
-from mega import Mega  # Mega.nz Python library
+from mega import Mega
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -25,7 +24,7 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging configuration
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
@@ -126,6 +125,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
+        logging.debug(f"Received /meganz command: {message.text}")
         args = message.text.split(maxsplit=2)
         if len(args) < 3:
             bot2.reply_to(message, "Usage: /meganz <username> <password>")
@@ -133,11 +133,18 @@ def handle_mega_login(message):
 
         username = args[1]
         password = args[2]
+        logging.debug(f"Attempting to log in with username: {username}")
 
         global mega_client
         mega_client = Mega().login(username, password)
-        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+        if mega_client is not None:
+            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+            logging.debug("Login successful")
+        else:
+            bot2.reply_to(message, "Login failed. Mega client is None.")
+            logging.debug("Mega client is None")
     except Exception as e:
+        logging.error(f"Login failed: {str(e)}")
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
@@ -164,6 +171,23 @@ def handle_direct_download(message):
         handle_download_and_upload(message, url, upload_to_mega_flag=False)
     else:
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
+
+
+# /start command
+@bot2.message_handler(commands=['start'])
+def handle_start(message):
+    bot2.reply_to(
+        message,
+        f"Hello, {message.from_user.first_name}!\n\n"
+        "I am your Media Downloader bot. Here's what I can do:\n\n"
+        "✅ Download videos from supported platforms.\n"
+        "✅ Upload videos to Mega.nz.\n\n"
+        "Commands:\n"
+        "• /meganz <username> <password> - Login to Mega.nz.\n"
+        "• /mega <URL> - Download and upload to Mega.nz.\n"
+        "• Paste a valid URL to download directly.\n\n"
+        "Enjoy!"
+    )
 
 
 # Flask app for webhook
