@@ -5,8 +5,7 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse, parse_qs
-from mega import Mega
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from mega import Mega  # Mega.nz Python library
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -25,16 +24,13 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Logging configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'instagram:user.com', 'instagram:story.com', 'Popcorntimes.com', 'PopcornTV.com', 'Pornbox.com', 'XXXYMovies.com', 'VuClip.com', 'XHamster.com', 'XNXX.com', 'XVideos.com']
 
 # Mega client
 mega_client = None
-
-# User sessions for login/logout
-user_sessions = {}
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
@@ -133,12 +129,8 @@ def handle_mega_login(message):
 
         global mega_client
         mega_client = Mega().login(username, password)
-        if mega_client is not None:
-            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-        else:
-            bot2.reply_to(message, "Login failed. Mega client is None.")
+        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
     except Exception as e:
-        logging.error("Login failed", exc_info=True)
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 # Download and upload to Mega.nz
@@ -152,7 +144,47 @@ def handle_mega(message):
 
         url = args[1]
         handle_download_and_upload(message, url, upload_to_mega_flag=True)
+    except IndexError:
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+
+# Add /profile command to fetch Instagram profile and download all posts
+@bot2.message_handler(commands=['profile'])
+def handle_instagram_profile(message):
+    try:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            bot2.reply_to(message, "Usage: /profile <Instagram Profile URL>")
+            return
+
+        profile_url = args[1].strip()
+
+        # Check if the URL is a valid Instagram profile link
+        if 'instagram.com' not in profile_url or '/p/' in profile_url:
+            bot2.reply_to(message, "Please provide a valid Instagram profile URL (not a post or reel).")
+            return
+
+        bot2.reply_to(message, "Fetching posts from the Instagram profile, please wait...")
+
+        # Set yt-dlp options for profile download
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'outtmpl': f'{output_dir}{sanitize_filename("%(uploader)s")}/%(title)s.%(ext)s',
+            'cookiefile': cookies_file,
+            'socket_timeout': 10,
+            'retries': 5,
+            'quiet': False,
+            'extract_flat': False,  # Ensure full download
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(profile_url, download=True)
+                bot2.reply_to(message, f"Successfully downloaded all posts from {info_dict['uploader']}'s profile.")
+        except Exception as e:
+            logging.error("yt-dlp Instagram profile download error", exc_info=True)
+            bot2.reply_to(message, f"Failed to download posts: {str(e)}")
     except Exception as e:
+        logging.error("Instagram profile handler error", exc_info=True)
         bot2.reply_to(message, f"An error occurred: {str(e)}")
 
 # Direct download without Mega.nz
@@ -163,49 +195,6 @@ def handle_direct_download(message):
         handle_download_and_upload(message, url, upload_to_mega_flag=False)
     else:
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
-
-# /start command with Login and Logout buttons
-@bot2.message_handler(commands=['start'])
-def handle_start(message):
-    user_id = message.chat.id
-    is_logged_in = user_id in user_sessions
-
-    # Inline keyboard for Login and Logout
-    keyboard = InlineKeyboardMarkup()
-    if is_logged_in:
-        keyboard.add(InlineKeyboardButton("Logout", callback_data="logout"))
-    else:
-        login_url = f"https://mega.nz/login?user_id={user_id}"
-        keyboard.add(InlineKeyboardButton("Login", url=login_url))
-
-    bot2.reply_to(
-        message,
-        f"Hello, {message.from_user.first_name}!\n\n"
-        "I am your Media Downloader bot. Here's what I can do:\n\n"
-        "✅ Download videos from supported platforms.\n"
-        "✅ Upload videos to Mega.nz.\n\n"
-        "Commands:\n"
-        "• /meganz <username> <password> - Login to Mega.nz.\n"
-        "• /mega <URL> - Download and upload to Mega.nz.\n"
-        "• Paste a valid URL to download directly.\n\n"
-        f"{'You are logged in!' if is_logged_in else 'Please log in to continue.'}",
-        reply_markup=keyboard
-    )
-
-# Callback query handler for Logout
-@bot2.callback_query_handler(func=lambda call: call.data == "logout")
-def handle_logout(call):
-    user_id = call.message.chat.id
-    if user_id in user_sessions:
-        del user_sessions[user_id]  # Remove user session
-        bot2.answer_callback_query(call.id, "You have been logged out.")
-        bot2.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text="You have successfully logged out.\n\nClick /start to log in again."
-        )
-    else:
-        bot2.answer_callback_query(call.id, "You are not logged in.")
 
 # Flask app for webhook
 app = Flask(__name__)
