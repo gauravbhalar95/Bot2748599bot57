@@ -41,10 +41,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 
-                     'instagram:user.com', 'instagram:story.com', 'Popcorntimes.com', 
-                     'PopcornTV.com', 'Pornbox.com', 'XXXYMovies.com', 'VuClip.com', 
-                     'XHamster.com', 'XNXX.com', 'XVideos.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Mega client
 mega_client = None
@@ -85,7 +82,7 @@ def download_media(url, download_dir, start_time=None, end_time=None):
         return file_path
     except Exception as e:
         logger.error("yt-dlp download error", exc_info=True)
-        raise
+        raise Exception("Error downloading the media. Please try again later.")
 
 # Upload file to Mega.nz
 def upload_to_mega(file_path):
@@ -100,7 +97,7 @@ def upload_to_mega(file_path):
         return public_link
     except Exception as e:
         logger.error("Error uploading to Mega", exc_info=True)
-        raise
+        raise Exception("Error uploading to Mega.nz. Please try again later.")
 
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
@@ -136,9 +133,9 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         logger.info(f"File deleted: {file_path}")
     except Exception as e:
         logger.error("Download or upload failed", exc_info=True)
-        bot2.reply_to(message, f"Download or upload failed: {str(e)}")
+        bot2.reply_to(message, f"Operation failed: {str(e)}")
 
-# Mega login command with debugging
+# Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     try:
