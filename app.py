@@ -175,7 +175,8 @@ def handle_start(message):
     if is_logged_in:
         keyboard.add(InlineKeyboardButton("Logout", callback_data="logout"))
     else:
-        login_url = f"https://mega.nz/login?user_id={user_id}"
+        # Redirect user to Mega login page
+        login_url = f"https://mega.nz/login?user_id={user_id}"  # Replace with actual URL if needed
         keyboard.add(InlineKeyboardButton("Login", url=login_url))
 
     bot2.reply_to(
