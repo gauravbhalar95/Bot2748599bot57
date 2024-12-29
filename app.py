@@ -133,7 +133,7 @@ def download_and_send(message, url, username=None, password=None):
         bot2.reply_to(message, f"Failed to download. Error: {str(e)}")
         logging.error(f"Download failed: {e}")
 
-# Function to handle commands
+# Function to handle Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     # Extract username and password
@@ -149,6 +149,25 @@ def handle_mega_login(message):
             logging.error(f"Mega login failed: {e}")
     else:
         bot2.reply_to(message, "Please provide both username and password in the format: /meganz <username> <password>")
+
+# Function to handle info command
+@bot2.message_handler(commands=['info'])
+def handle_info(message):
+    try:
+        # Example of what could be returned as bot info
+        if mega_credentials is None:
+            status = "Not logged in to Mega.nz."
+        else:
+            # Retrieve basic Mega account info (this is just an example)
+            status = f"Logged in to Mega.nz as {mega_credentials.username}."
+        
+        # Send back bot info to the user
+        bot2.reply_to(message, f"Bot Status:\n{status}\nNumber of files uploaded: {len(os.listdir(output_dir))}")
+    
+    except Exception as e:
+        # Handle errors gracefully
+        bot2.reply_to(message, f"Failed to fetch bot information. Error: {str(e)}")
+        logging.error(f"Error in /info command: {e}")
 
 # Function to handle messages with media URLs
 @bot2.message_handler(func=lambda message: True)
