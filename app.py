@@ -23,7 +23,7 @@ cookies_file = 'cookies.txt'
 os.makedirs(output_dir, exist_ok=True)
 
 # Logging configuration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
@@ -130,7 +130,7 @@ def handle_mega_login(message):
         global mega_client
         mega_client = Mega().login(username, password)
 
-        if mega_client is None or not mega_client.is_logged_in():
+        if mega_client is None:
             bot2.reply_to(message, "Login failed. Please check your credentials and try again.")
         else:
             bot2.reply_to(message, "Successfully logged in to Mega.nz!")
@@ -161,24 +161,21 @@ def handle_direct_download(message):
     if is_valid_url(url):
         handle_download_and_upload(message, url, upload_to_mega_flag=False)
     else:
-        bot2.reply_to(message, "Please provide a valid URL to download media.")
+        bot2.reply_to(message, "Invalid URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
 
 
-# Flask app to handle webhook
+# Flask app for webhook
 app = Flask(__name__)
 
-
-@app.route(f"/{API_TOKEN_2}", methods=['POST'])
+@app.route(f'/{API_TOKEN_2}', methods=['POST'])
 def webhook():
-    json_update = request.get_json(force=True)
-    bot2.process_new_updates([telebot.types.Update.de_json(json_update)])
+    json_string = request.get_data(as_text=True)
+    update = telebot.types.Update.de_json(json_string)
+    bot2.process_new_updates([update])
     return "OK", 200
 
 
-# Set webhook
-if KOYEB_URL:
+if __name__ == '__main__':
     bot2.remove_webhook()
-    bot2.set_webhook(url=f"{KOYEB_URL}/{API_TOKEN_2}")
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    bot2.set_webhook(url=f'{KOYEB_URL}/{API_TOKEN_2}')
+    app.run(host='0.0.0.0', port=8080)
