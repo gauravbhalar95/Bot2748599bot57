@@ -50,18 +50,19 @@ def is_valid_url(url):
 
 
 # Download media using yt-dlp
-def download_media(url, start_time=None, end_time=None):
+def download_media(url, start_time=None, end_time=None, download_playlist=False, format='best[ext=mp4]/best', custom_output_dir=None):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'format': format,
+        'outtmpl': f'{custom_output_dir or output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 5,
+        'noplaylist': not download_playlist,  # Whether to download entire playlist or single video
+        'postprocessor_args': ['-ss', start_time, '-to', end_time] if start_time and end_time else [],
+        'writethumbnail': True,  # Download the thumbnail
+        'writeinfojson': True,   # Save metadata
     }
-
-    if start_time and end_time:
-        ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -70,6 +71,28 @@ def download_media(url, start_time=None, end_time=None):
         return file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
+        raise
+
+
+# Extract video/audio metadata (resolution, duration, etc.)
+def get_video_metadata(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'quiet': True,  # Suppress unnecessary output
+        'extractaudio': True,  # Extract audio as well
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            metadata = {
+                'title': info_dict.get('title', ''),
+                'duration': info_dict.get('duration', 0),
+                'formats': info_dict.get('formats', []),
+                'url': info_dict.get('url', ''),
+            }
+        return metadata
+    except Exception as e:
+        logging.error("yt-dlp metadata extraction error", exc_info=True)
         raise
 
 
@@ -92,6 +115,45 @@ def upload_to_mega(file_path):
     except Exception as e:
         logging.error("Error uploading to Mega", exc_info=True)
         raise
+
+
+# Download file from Mega.nz
+def download_from_mega(file_url):
+    if mega_client is None:
+        raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
+
+    try:
+        file = mega_client.get_file(file_url)
+        file_path = os.path.join(output_dir, sanitize_filename(file.name))
+        mega_client.download(file, file_path)
+        return file_path
+    except Exception as e:
+        logging.error("Error downloading from Mega", exc_info=True)
+        raise
+
+
+# List files in Mega.nz account
+def list_mega_files():
+    if mega_client is None:
+        raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
+
+    try:
+        files = mega_client.get_files()
+        file_list = "\n".join([f"{file['name']} - {file['size']} bytes" for file in files])
+        return file_list if file_list else "No files found."
+    except Exception as e:
+        logging.error("Error listing files on Mega", exc_info=True)
+        raise
+
+
+# Logout from Mega.nz
+def logout_from_mega():
+    global mega_client
+    if mega_client:
+        mega_client.logout()
+        mega_client = None
+        return "Successfully logged out from Mega.nz."
+    return "No active Mega session."
 
 
 # Handle download and upload logic
@@ -154,6 +216,42 @@ def handle_mega_login(message):
         bot2.reply_to(message, "Successfully logged in to Mega.nz!")
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
+
+
+# Mega file list command
+@bot2.message_handler(commands=['list_mega'])
+def handle_list_files(message):
+    try:
+        file_list = list_mega_files()
+        bot2.reply_to(message, f"Files in your Mega account:\n{file_list}")
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to list files: {str(e)}")
+
+
+# Mega file download command
+@bot2.message_handler(commands=['download_mega'])
+def handle_download_mega(message):
+    try:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            bot2.reply_to(message, "Usage: /download_mega <file_url>")
+            return
+
+        file_url = args[1]
+        file_path = download_from_mega(file_url)
+        bot2.reply_to(message, f"File downloaded to {file_path}")
+    except Exception as e:
+        bot2.reply_to(message, f"Failed to download file: {str(e)}")
+
+
+# Mega logout command
+@bot2.message_handler(commands=['logout_mega'])
+def handle_logout_mega(message):
+    try:
+        logout_message = logout_from_mega()
+        bot2.reply_to(message, logout_message)
+    except Exception as e:
+        bot2.reply_to(message, f"Logout failed: {str(e)}")
 
 
 # Download and upload to Mega.nz
