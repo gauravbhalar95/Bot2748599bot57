@@ -27,8 +27,8 @@ if not os.path.exists(output_dir):
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
-# Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+# Supported domains, added new platforms here
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'xvideos.com', 'xnxx.com']
 
 # Mega client
 mega_client = None
@@ -90,7 +90,7 @@ def upload_to_mega(file_path):
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
-        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, X, Facebook, Xvideos, XNXX.")
         return
 
     try:
