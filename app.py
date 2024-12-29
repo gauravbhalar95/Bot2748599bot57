@@ -28,7 +28,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'xvideo.com', 'xnxx.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Mega client
 mega_client = None
