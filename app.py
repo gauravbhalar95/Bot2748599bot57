@@ -1,10 +1,10 @@
 import os
 import logging
+import subprocess
 from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
 from mega import Mega  # Mega.nz Python library
 
@@ -36,7 +36,7 @@ mega_client = None
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
 
@@ -67,15 +67,17 @@ def download_media(url, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-
-            # Check if file exists after download
-            if not os.path.exists(file_path):
-                raise Exception(f"Downloaded file not found: {file_path}")
-
         return file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
         raise
+
+
+# Compress video before sending
+def compress_video(file_path):
+    compressed_file_path = file_path.replace('.mp4', '_compressed.mp4')
+    subprocess.run(['ffmpeg', '-i', file_path, '-vcodec', 'libx264', '-crf', '28', compressed_file_path])
+    return compressed_file_path
 
 
 # Upload file to Mega.nz
@@ -110,18 +112,25 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         # Download media
         file_path = download_media(url, start_time, end_time)
 
-        if upload_to_mega_flag:
-            # Upload to Mega.nz
-            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+        # Compress the video
+        compressed_file_path = compress_video(file_path)
+
+        # Check file size, if it's above the Telegram limit, upload to Mega
+        if os.path.getsize(compressed_file_path) > 50 * 1024 * 1024:  # If greater than 50MB
+            if upload_to_mega_flag:
+                bot2.reply_to(message, "File is too large for Telegram. Uploading to Mega.nz...")
+                mega_link = upload_to_mega(compressed_file_path)
+                bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+            else:
+                bot2.reply_to(message, "The file is too large for direct sending. Please consider using Mega for sharing.")
         else:
-            # Send video directly
-            with open(file_path, 'rb') as video:
+            # Send video directly if the file size is within limits
+            with open(compressed_file_path, 'rb') as video:
                 bot2.send_video(message.chat.id, video)
 
         # Cleanup
         os.remove(file_path)
+        os.remove(compressed_file_path)
     except Exception as e:
         logging.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
