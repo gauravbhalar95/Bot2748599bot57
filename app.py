@@ -28,7 +28,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'xvideo.com', 'xnxx.com']
 
 # Mega client
 mega_client = None
@@ -36,7 +36,7 @@ mega_client = None
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)  # Remove invalid characters
     return filename.strip()[:max_length]
 
 
@@ -67,6 +67,11 @@ def download_media(url, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
+
+            # Check if file exists after download
+            if not os.path.exists(file_path):
+                raise Exception(f"Downloaded file not found: {file_path}")
+
         return file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
