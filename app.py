@@ -6,7 +6,6 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 from mega import Mega  # Mega.nz Python library
-from decoder import decode_file, validate_data  # Import from decoder module
 import time
 
 # Load environment variables
@@ -90,24 +89,17 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         bot2.reply_to(message, "Downloading the video, please wait...")
         file_path = download_media(url)
 
-        # Decode the file
-        decoded_file = decode_file(file_path)
-
-        if not validate_data(decoded_file):
-            bot2.reply_to(message, "Failed to process the downloaded file.")
-            return
-
         # Upload to Mega or send the video to Telegram
         if upload_to_mega_flag:
             bot2.reply_to(message, "Uploading to Mega.nz...")
-            mega_link = upload_to_mega(decoded_file)
+            mega_link = upload_to_mega(file_path)
             bot2.reply_to(message, f"Uploaded to Mega.nz: {mega_link}")
         else:
-            with open(decoded_file, 'rb') as video:
+            with open(file_path, 'rb') as video:
                 bot2.send_video(message.chat.id, video)
 
         # Cleanup
-        os.remove(decoded_file)
+        os.remove(file_path)
     except Exception as e:
         logging.error("Error during handling", exc_info=True)
         bot2.reply_to(message, f"An error occurred: {str(e)}")
