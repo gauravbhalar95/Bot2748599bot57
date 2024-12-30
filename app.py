@@ -6,7 +6,8 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 from mega import Mega  # Mega.nz Python library
-from decoder import decode_file, validate_data  # Import functions from decoder.py
+import json
+import time
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
