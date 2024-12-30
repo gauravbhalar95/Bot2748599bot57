@@ -127,21 +127,24 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 def handle_mega_login(message):
     try:
         args = message.text.split(maxsplit=2)
-        if len(args) < 3:
-            bot2.reply_to(message, "Usage: /meganz <username> <password>")
-            return
-
-        username = args[1]
-        password = args[2]
-
-        global mega_client
-        mega_client = Mega().login(username, password)
-        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+        if len(args) == 1:
+            # Perform anonymous login if no email and password are provided
+            global mega_client
+            mega_client = Mega().login()  # Anonymous login
+            bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
+        elif len(args) == 3:
+            # Perform login using email and password
+            username = args[1]
+            password = args[2]
+            mega_client = Mega().login(username, password)
+            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+        else:
+            bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
-# Download and upload to Mega.nz
+# Mega download and upload handler remains the same as before
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
