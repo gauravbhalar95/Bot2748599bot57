@@ -4,7 +4,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega  # Mega.nz Python library
 from decoder import decode_file, validate_data  # Import functions from decoder.py
 
@@ -16,7 +16,7 @@ KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 # Initialize bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 
-# Directories
+# Directories for downloads and processed files
 output_dir = 'downloads/'
 processed_dir = 'processed/'
 cookies_file = 'cookies.txt'
@@ -29,10 +29,10 @@ for directory in [output_dir, processed_dir]:
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
-# Supported domains
+# Supported domains for URL validation
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
-# Mega client
+# Mega client for file uploads
 mega_client = None
 
 # Sanitize filenames for downloaded files
@@ -40,7 +40,7 @@ def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Check if a URL is valid and supported
+# Check if the URL is valid and belongs to supported domains
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -56,6 +56,7 @@ def download_media(url, start_time=None, end_time=None):
         'cookiefile': cookies_file,
     }
 
+    # Set the start and end time for trimming the video
     if start_time and end_time:
         ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
 
@@ -98,6 +99,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
             bot2.reply_to(message, "Failed to process the downloaded file.")
             return
 
+        # Upload to Mega or send the video to Telegram
         if upload_to_mega_flag:
             bot2.reply_to(message, "Uploading to Mega.nz...")
             mega_link = upload_to_mega(decoded_file)
