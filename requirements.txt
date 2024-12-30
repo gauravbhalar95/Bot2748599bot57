@@ -7,6 +7,4 @@ yt-dlp
 beautifulsoup4
 moviepy
 mega.py
-decoder==0.5
 pip-tools
-decoder.py
