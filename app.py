@@ -79,6 +79,28 @@ def upload_to_mega(file_path):
         logging.error("Error uploading to Mega", exc_info=True)
         raise
 
+# Mega login handler
+@bot2.message_handler(commands=['meganz'])
+def meganz_login(message):
+    # Expect the command format: /meganz <username> <password>
+    command_args = message.text.split()
+    
+    if len(command_args) != 3:
+        bot2.reply_to(message, "Usage: /meganz <username> <password>")
+        return
+
+    username = command_args[1]
+    password = command_args[2]
+
+    try:
+        # Initialize Mega client and log in
+        global mega_client
+        mega_client = Mega().login(username, password)
+        bot2.reply_to(message, f"Successfully logged into Mega.nz as {username}. You can now upload files.")
+    except Exception as e:
+        logging.error("Mega login error", exc_info=True)
+        bot2.reply_to(message, "Failed to log in to Mega.nz. Please check your credentials and try again.")
+
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
