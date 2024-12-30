@@ -6,7 +6,9 @@ import yt_dlp
 import re
 import subprocess
 from urllib.parse import urlparse, parse_qs
-from mega import Mega  # Mega.nz Python library
+from mega import Mega
+import time
+import json
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -122,24 +124,36 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 
-# Mega login command
+# Mega login command with retries and error handling
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
+    global mega_client
     try:
         args = message.text.split(maxsplit=2)
         if len(args) == 1:
             # Perform anonymous login if no email and password are provided
-            global mega_client
             mega_client = Mega().login()  # Anonymous login
             bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
         elif len(args) == 3:
-            # Perform login using email and password
-            username = args[1]
+            # Perform login using email and password with retries
+            email = args[1]
             password = args[2]
-            mega_client = Mega().login(username, password)
-            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    mega_client = Mega().login(email, password)
+                    bot2.reply_to(message, "Successfully logged in to Mega.nz!")
+                    break  # Exit the loop if login is successful
+                except Exception as e:
+                    if "Expecting value" in str(e):
+                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
+                        time.sleep(5)  # Wait 5 seconds before retrying
+                    else:
+                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
+                        break  # Exit the loop if it's not a JSONDecodeError
         else:
             bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
+
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
