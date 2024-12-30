@@ -6,8 +6,7 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 from mega import Mega  # Mega.nz Python library
-from decoder import decode_file, validate_data  # Import functions from decoder.py
-import json
+from decoder import decode_file, validate_data  # Import from decoder module
 import time
 
 # Load environment variables
@@ -20,13 +19,11 @@ bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 
 # Directories for downloads and processed files
 output_dir = 'downloads/'
-processed_dir = 'processed/'
 cookies_file = 'cookies.txt'
 
-# Ensure directories exist
-for directory in [output_dir, processed_dir]:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+# Ensure download directory exists
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
@@ -58,7 +55,6 @@ def download_media(url, start_time=None, end_time=None):
         'cookiefile': cookies_file,
     }
 
-    # Set the start and end time for trimming the video
     if start_time and end_time:
         ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
 
@@ -111,7 +107,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
                 bot2.send_video(message.chat.id, video)
 
         # Cleanup
-        os.remove(file_path)
+        os.remove(decoded_file)
     except Exception as e:
         logging.error("Error during handling", exc_info=True)
         bot2.reply_to(message, f"An error occurred: {str(e)}")
