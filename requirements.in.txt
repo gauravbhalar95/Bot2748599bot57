@@ -1,0 +1,11 @@
+Flask
+pyTelegramBotAPI
+requests
+telebot
+python-telegram-bot
+yt-dlp
+beautifulsoup4
+moviepy
+mega.py
+decoder==0.5
+pip-tools
