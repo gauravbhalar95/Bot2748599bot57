@@ -19,7 +19,7 @@ RUN apt-get update && \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container
+# Copy the rest of the application code (including decoder.py) into the container
 COPY . /app/
 
 # Create the download directory for storing media files
