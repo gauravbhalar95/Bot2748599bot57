@@ -84,7 +84,7 @@ def upload_to_mega(file_path, folder_name=None):
         # Find the folder by name if provided
         folder = None
         if folder_name:
-            folder = [f for f in mega_client.get_files().values() if f['a'].get('n') == folder_name]
+            folder = [f for f in mega_client.str_files().values() if f['a'].str('n') == folder_name]
             if not folder:
                 raise Exception(f"Folder '{folder_name}' not found on Mega.nz")
             folder = folder[0]
