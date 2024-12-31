@@ -4,11 +4,9 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
-import json
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -75,13 +73,22 @@ def download_media(url, start_time=None, end_time=None):
         raise
 
 
-# Upload file to Mega.nz
-def upload_to_mega(file_path):
+# Upload file to Mega.nz in a specific folder
+def upload_to_mega(file_path, folder_name=None):
     if mega_client is None:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
-        file = mega_client.upload(file_path)
+        if folder_name:
+            # Search for the specified folder
+            folder = mega_client.find(folder_name, exclude_deleted=True)
+            if not folder:
+                raise Exception(f"Folder '{folder_name}' not found in Mega.nz.")
+        else:
+            folder = None  # Default to root folder if no folder is specified
+
+        # Upload file to the specified folder (or root if None)
+        file = mega_client.upload(file_path, folder[0] if folder else None)
         public_link = mega_client.get_upload_link(file)
         return public_link
     except Exception as e:
@@ -90,7 +97,7 @@ def upload_to_mega(file_path):
 
 
 # Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
+def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -108,9 +115,9 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
-            # Upload to Mega.nz
+            # Upload to Mega.nz in the specified folder
             bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
+            mega_link = upload_to_mega(file_path, folder_name)
             bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
         else:
             # Send video directly
@@ -145,32 +152,28 @@ def handle_mega_login(message):
                     bot2.reply_to(message, "Successfully logged in to Mega.nz!")
                     break  # Exit the loop if login is successful
                 except Exception as e:
-                    if "Expecting value" in str(e):
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
-                        time.sleep(5)  # Wait 5 seconds before retrying
-                    else:
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
-                        break  # Exit the loop if it's not a JSONDecodeError
+                    bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
+                    time.sleep(5)  # Wait 5 seconds before retrying
         else:
             bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
-
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
-# Mega download and upload handler remains the same as before
+# Mega download and upload handler with folder support
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [folder]")
             return
 
         url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
+        folder_name = args[2] if len(args) > 2 else None
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [folder].")
 
 
 # Direct download without Mega.nz
