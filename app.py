@@ -112,26 +112,26 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=No
     try:
         bot2.reply_to(message, "Downloading the video, please wait...")
 
-        # Ensure query parameters are parsed correctly
+        # Extract start and end times if provided in the YouTube URL
         parsed_url = urlparse(url)
         query_params = parse_qs(parsed_url.query)
-        
-        # Fix: Check if 'start' and 'end' exist in query_params
-        start_time = query_params.get('start', [None])[0]
-        end_time = query_params.get('end', [None])[0]
+        start_time = query_params.get('start', [None])[0]  # Default to None if not found
+        end_time = query_params.get('end', [None])[0]  # Default to None if not found
 
-        # Call the download media function
+        # Download media
         file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
+            # Upload to Mega.nz
             bot2.reply_to(message, f"Uploading the video to Mega.nz folder '{folder_name}' if specified, please wait...")
             mega_link = upload_to_mega(file_path, folder_name)
             bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
         else:
+            # Send video directly
             with open(file_path, 'rb') as video:
                 bot2.send_video(message.chat.id, video)
 
-        # Clean up downloaded file
+        # Cleanup
         os.remove(file_path)
     except Exception as e:
         logging.error("Download or upload failed", exc_info=True)
