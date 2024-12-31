@@ -75,13 +75,27 @@ def download_media(url, start_time=None, end_time=None):
         raise
 
 
-# Upload file to Mega.nz
-def upload_to_mega(file_path):
+# Upload file to a specific folder on Mega.nz
+def upload_to_mega(file_path, folder_name=None):
     if mega_client is None:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
-        file = mega_client.upload(file_path)
+        # Find the folder by name if provided
+        folder = None
+        if folder_name:
+            folder = [f for f in mega_client.get_files().values() if f['a'].get('n') == folder_name]
+            if not folder:
+                raise Exception(f"Folder '{folder_name}' not found on Mega.nz")
+            folder = folder[0]
+
+        # Upload the file
+        if folder:
+            file = mega_client.upload(file_path, folder[0])
+        else:
+            file = mega_client.upload(file_path)
+
+        # Get public link
         public_link = mega_client.get_upload_link(file)
         return public_link
     except Exception as e:
@@ -90,7 +104,7 @@ def upload_to_mega(file_path):
 
 
 # Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
+def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -109,8 +123,8 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
-            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
+            bot2.reply_to(message, f"Uploading the video to Mega.nz folder '{folder_name}' if specified, please wait...")
+            mega_link = upload_to_mega(file_path, folder_name)
             bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
         else:
             # Send video directly
@@ -162,15 +176,16 @@ def handle_mega_login(message):
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)  # Allow optional folder name
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [folder_name]")
             return
 
         url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
+        folder_name = args[2] if len(args) > 2 else None
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [folder_name].")
 
 
 # Direct download without Mega.nz
