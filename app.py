@@ -29,7 +29,7 @@ if not os.path.exists(output_dir):
 # Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
-# Supported domains
+# Supported domains for direct download
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Mega client storage for multi-account support
@@ -50,7 +50,7 @@ def is_valid_url(url):
         return False
 
 
-# Download media using yt-dlp
+# Download media using yt-dlp (YouTube, X/Twitter, Facebook)
 def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -71,6 +71,27 @@ def download_media(url, start_time=None, end_time=None):
         return file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
+        raise
+
+
+# Download media directly from Instagram (using Instagram-specific handling)
+def download_instagram(url):
+    # Handle Instagram media download
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+        return file_path
+    except Exception as e:
+        logging.error("Instagram download error", exc_info=True)
         raise
 
 
@@ -106,8 +127,13 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, f
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
-        # Download media
-        file_path = download_media(url, start_time, end_time)
+        # Check platform and download media accordingly
+        if 'instagram.com' in url:
+            # Download Instagram media directly
+            file_path = download_instagram(url)
+        else:
+            # Download from YouTube, X/Twitter, or Facebook
+            file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
