@@ -26,7 +26,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'pinterest.com']
 
 # Mega client
 mega_client = None
@@ -44,8 +44,16 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Parse YouTube URL with optional start and end times
+def parse_youtube_url(url):
+    match = re.match(r'(https?://[^\s]+)\s+(\d+)-(\d+)', url)
+    if match:
+        url, start, end = match.groups()
+        return url, int(start), int(end)
+    return url, None, None
+
 # Download media using yt-dlp
-def download_media(url):
+def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
@@ -54,6 +62,15 @@ def download_media(url):
         'socket_timeout': 10,
         'retries': 5,
     }
+
+    # Add trimming options if start_time and end_time are provided
+    if start_time is not None and end_time is not None:
+        ydl_opts['postprocessors'].append({
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+            'postprocessor_args': ['-ss', str(start_time), '-to', str(end_time)],
+        })
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -114,22 +131,19 @@ def handle_mega(message):
         folder_name = args[2] if len(args) > 2 else None  # Optional folder name
 
         if not is_valid_url(url):
-            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook, Pinterest.")
             return
+
+        url, start_time, end_time = parse_youtube_url(url)
 
         bot2.reply_to(message, "Downloading the video, please wait...")
 
         # Download media
-        file_path = download_media(url)
+        file_path = download_media(url, start_time, end_time)
 
         # Upload to Mega.nz
         bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-        folder = mega_client.find(folder_name) if folder_name else None
-        if folder_name and not folder:
-            folder = mega_client.create_folder(folder_name)
-        folder_id = folder[0] if folder else None
-        mega_link = mega_client.upload(file_path, folder_id)
-        mega_link = mega_client.get_upload_link(mega_link)
+        mega_link = upload_to_mega(file_path, folder_name)
         bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
 
         # Cleanup
