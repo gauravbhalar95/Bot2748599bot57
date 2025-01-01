@@ -191,4 +191,4 @@ def set_webhook():
 # Start the Flask app (required for webhook)
 if __name__ == "__main__":
     set_webhook()
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
