@@ -11,7 +11,7 @@ import subprocess
 import json
 
 # Load environment variables
-API_TOKEN = os.getenv('API_TOKEN')
+API_TOKEN = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')
 KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 
