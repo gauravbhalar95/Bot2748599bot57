@@ -84,6 +84,26 @@ def download_instagram(url):
         'socket_timeout': 10,
         'retries': 5,
     }
+# Download media directly from Twitter (using Twitter-specific handling)
+def download_x(url):
+    # Handle x.com media download
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
+# Download media directly from Facebook (using Facebook-specific handling)
+def download_Facebook(url):
+    # Handle Facebook media download
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -129,6 +149,10 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, f
 
         # Check platform and download media accordingly
         if 'instagram.com' in url:
+        
+      elif 'x.com' in url:
+      
+      elif 'youtube.com' in url:youtube.be
             # Download Instagram media directly
             file_path = download_instagram(url)
         else:
