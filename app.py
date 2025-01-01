@@ -27,7 +27,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'xvideo', 'xnxx.com']
 
 # Mega client
 mega_client = None
@@ -163,7 +163,7 @@ def handle_mega(message):
     except Exception as e:
         bot2.reply_to(message, f"Error: {str(e)}")
 
-# Handle direct download
+# Handle direct download for all platforms (Instagram, Facebook, etc.)
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
     url = message.text.strip()
