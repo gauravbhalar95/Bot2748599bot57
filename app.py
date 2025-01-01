@@ -131,22 +131,23 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, f
 def handle_mega_login(message):
     global mega_clients
     try:
-        args = message.text.split(maxsplit=2)
+        args = message.text.split(maxsplit=3)
         if len(args) == 1:
             # Perform anonymous login if no email and password are provided
             mega_client = Mega().login()  # Anonymous login
             mega_clients[message.chat.id] = mega_client
             bot.reply_to(message, "Logged in to Mega.nz anonymously!")
-        elif len(args) == 3:
+        elif len(args) == 4:
             # Perform login using email and password with retries
-            email = args[1]
-            password = args[2]
+            account_number = args[1]
+            email = args[2]
+            password = args[3]
             retries = 3
             for attempt in range(retries):
                 try:
                     mega_client = Mega().login(email, password)
                     mega_clients[message.chat.id] = mega_client
-                    bot.reply_to(message, "Successfully logged in to Mega.nz!")
+                    bot.reply_to(message, f"Successfully logged in to Mega.nz account {account_number}!")
                     break  # Exit the loop if login is successful
                 except Exception as e:
                     if "Expecting value" in str(e):
@@ -156,30 +157,19 @@ def handle_mega_login(message):
                         bot.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
                         break  # Exit the loop if it's not a JSONDecodeError
         else:
-            bot.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login.")
+            bot.reply_to(message, "Usage: /meganz <account_number> <email> <password> or /meganz for anonymous login.")
     except Exception as e:
         logging.error("Error during Mega login", exc_info=True)
         bot.reply_to(message, f"Error during Mega login: {str(e)}")
 
 
 # Handle media download and upload requests
-@bot.message_handler(func=lambda message: is_valid_url(message.text))
-def handle_media_download(message):
-    url = message.text
-    mega_client = mega_clients.get(message.chat.id, None)
-    if not mega_client:
-        bot.reply_to(message, "You must log in to Mega.nz first using /meganz <username> <password>.")
-        return
-    handle_download_and_upload(message, url, upload_to_mega_flag=True, mega_client=mega_client)
-
-
-# Handle upload command with folder option
-@bot.message_handler(commands=['meganz_upload'])
+@bot.message_handler(commands=['mega'])
 def handle_mega_upload(message):
     try:
         args = message.text.split(maxsplit=2)
         if len(args) < 2:
-            bot.reply_to(message, "Usage: /meganz_upload <url> [folder] (optional)")
+            bot.reply_to(message, "Usage: /mega <url> [folder] (optional)")
             return
 
         url = args[1]
@@ -194,6 +184,18 @@ def handle_mega_upload(message):
     except Exception as e:
         logging.error("Error handling Mega upload", exc_info=True)
         bot.reply_to(message, f"Error: {str(e)}")
+
+
+# Handle direct URL for download (e.g., Instagram, YouTube)
+@bot.message_handler(func=lambda message: is_valid_url(message.text) and 'instagram.com' in message.text)
+def handle_direct_download(message):
+    url = message.text
+    mega_client = mega_clients.get(message.chat.id, None)
+    if not mega_client:
+        bot.reply_to(message, "You must log in to Mega.nz first using /meganz <username> <password>.")
+        return
+    # Direct download without uploading to Mega
+    handle_download_and_upload(message, url, upload_to_mega_flag=False, mega_client=mega_client)
 
 
 # Flask app for webhook
