@@ -4,12 +4,11 @@ import re
 from flask import Flask, request
 import telebot
 import yt_dlp
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
 KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 
 # Initialize bot
@@ -125,7 +124,12 @@ def handle_mega(message):
 
         # Upload to Mega.nz
         bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-        mega_link = upload_to_mega(file_path, folder_name)
+        folder = mega_client.find(folder_name) if folder_name else None
+        if folder_name and not folder:
+            folder = mega_client.create_folder(folder_name)
+        folder_id = folder[0] if folder else None
+        mega_link = mega_client.upload(file_path, folder_id)
+        mega_link = mega_client.get_upload_link(mega_link)
         bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
 
         # Cleanup
