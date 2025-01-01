@@ -1,20 +1,23 @@
 import os
 import logging
 import re
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
 from urllib.parse import urlparse
 from mega import Mega
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
+KOYEB_URL = os.getenv('KOYEB_URL')
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # For broadcasting to a specific channel
 
 # Initialize bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 
-# Directories
+# Directories and cookies
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
@@ -26,7 +29,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 'pinterest.com']
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
 # Mega client
 mega_client = None
@@ -44,16 +47,8 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Parse YouTube URL with optional start and end times
-def parse_youtube_url(url):
-    match = re.match(r'(https?://[^\s]+)\s+(\d+)-(\d+)', url)
-    if match:
-        url, start, end = match.groups()
-        return url, int(start), int(end)
-    return url, None, None
-
-# Download media using yt-dlp
-def download_media(url, start_time=None, end_time=None):
+# yt-dlp downloader function
+def download_media(url, platform=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
@@ -62,22 +57,13 @@ def download_media(url, start_time=None, end_time=None):
         'socket_timeout': 10,
         'retries': 5,
     }
-
-    # Add trimming options if start_time and end_time are provided
-    if start_time is not None and end_time is not None:
-        ydl_opts['postprocessors'].append({
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-            'postprocessor_args': ['-ss', str(start_time), '-to', str(end_time)],
-        })
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
         return file_path
     except Exception as e:
-        logging.error("yt-dlp download error", exc_info=True)
+        logging.error(f"yt-dlp download error for {platform}: {e}", exc_info=True)
         raise
 
 # Upload file to Mega.nz
@@ -98,7 +84,7 @@ def upload_to_mega(file_path, folder_name=None):
         logging.error("Error uploading to Mega", exc_info=True)
         raise
 
-# Mega login command
+# Login to Mega.nz
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     global mega_client
@@ -117,41 +103,44 @@ def handle_mega_login(message):
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-# Mega command with folder support
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    global mega_client
+# General download and send
+def download_and_send(message, url, platform=None):
+    if not is_valid_url(url):
+        bot2.reply_to(message, "Invalid URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        return
+
     try:
-        args = message.text.split(maxsplit=2)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL> [folder]\nExample: /mega https://example.com/video.mp4 MyFolder")
-            return
+        bot2.reply_to(message, f"Downloading {platform} media, please wait...")
+        file_path = download_media(url, platform)
 
-        url = args[1]
-        folder_name = args[2] if len(args) > 2 else None  # Optional folder name
-
-        if not is_valid_url(url):
-            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook, Pinterest.")
-            return
-
-        url, start_time, end_time = parse_youtube_url(url)
-
-        bot2.reply_to(message, "Downloading the video, please wait...")
-
-        # Download media
-        file_path = download_media(url, start_time, end_time)
-
-        # Upload to Mega.nz
-        bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-        mega_link = upload_to_mega(file_path, folder_name)
-        bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+        # Send media
+        with open(file_path, 'rb') as media:
+            if file_path.lower().endswith('.mp4'):
+                bot2.send_video(message.chat.id, media)
+            else:
+                bot2.send_document(message.chat.id, media)
 
         # Cleanup
         os.remove(file_path)
-
     except Exception as e:
-        logging.error("Error in /mega command", exc_info=True)
-        bot2.reply_to(message, f"Failed to handle the /mega command: {str(e)}")
+        bot2.reply_to(message, f"Failed to download {platform} media. Error: {str(e)}")
+        logging.error(f"Error downloading {platform} media: {e}")
+
+# Platform-specific handlers
+@bot2.message_handler(commands=['instagram'])
+def handle_instagram(message):
+    url = message.text.split(maxsplit=1)[-1]
+    threading.Thread(target=download_and_send, args=(message, url, "Instagram")).start()
+
+@bot2.message_handler(commands=['twitter'])
+def handle_twitter(message):
+    url = message.text.split(maxsplit=1)[-1]
+    threading.Thread(target=download_and_send, args=(message, url, "Twitter")).start()
+
+@bot2.message_handler(commands=['facebook'])
+def handle_facebook(message):
+    url = message.text.split(maxsplit=1)[-1]
+    threading.Thread(target=download_and_send, args=(message, url, "Facebook")).start()
 
 # Flask app for webhook
 app = Flask(__name__)
