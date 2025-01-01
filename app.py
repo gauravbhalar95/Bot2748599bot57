@@ -40,6 +40,7 @@ def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
+
 # Check if a URL is valid and supported
 def is_valid_url(url):
     try:
@@ -47,6 +48,7 @@ def is_valid_url(url):
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
+
 
 # Download media using yt-dlp (YouTube, X/Twitter, Facebook)
 def download_media(url, start_time=None, end_time=None):
@@ -71,17 +73,27 @@ def download_media(url, start_time=None, end_time=None):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
+
 # Download media directly from Instagram (using Instagram-specific handling)
 def download_instagram(url):
-    return download_media(url)
+    # Handle Instagram media download
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
 
-# Download media directly from Twitter (using Twitter-specific handling)
-def download_x(url):
-    return download_media(url)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+        return file_path
+    except Exception as e:
+        logging.error("Instagram download error", exc_info=True)
+        raise
 
-# Download media directly from Facebook (using Facebook-specific handling)
-def download_facebook(url):
-    return download_media(url)
 
 # Upload file to Mega.nz
 def upload_to_mega(file_path, mega_client, folder=None):
@@ -98,6 +110,7 @@ def upload_to_mega(file_path, mega_client, folder=None):
     except Exception as e:
         logging.error("Error uploading to Mega", exc_info=True)
         raise
+
 
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, folder=None):
@@ -116,16 +129,11 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, f
 
         # Check platform and download media accordingly
         if 'instagram.com' in url:
+            # Download Instagram media directly
             file_path = download_instagram(url)
-        elif 'x.com' in url:
-            file_path = download_x(url)
-        elif 'facebook.com' in url:
-            file_path = download_facebook(url)
-        elif 'youtube.com' in url or 'youtu.be' in url:
-            file_path = download_media(url, start_time, end_time)
         else:
-            bot.reply_to(message, "Unsupported URL.")
-            return
+            # Download from YouTube, X/Twitter, or Facebook
+            file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
@@ -142,6 +150,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, f
     except Exception as e:
         logging.error("Download or upload failed", exc_info=True)
         bot.reply_to(message, f"Download or upload failed: {str(e)}")
+
 
 # Mega login command with retries and error handling
 @bot.message_handler(commands=['meganz'])
@@ -179,6 +188,7 @@ def handle_mega_login(message):
         logging.error("Error during Mega login", exc_info=True)
         bot.reply_to(message, f"Error during Mega login: {str(e)}")
 
+
 # Handle media download and upload requests
 @bot.message_handler(commands=['mega'])
 def handle_mega_upload(message):
@@ -201,8 +211,9 @@ def handle_mega_upload(message):
         logging.error("Error handling Mega upload", exc_info=True)
         bot.reply_to(message, f"Error: {str(e)}")
 
-# Handle direct URL for download (e.g., Instagram, YouTube)
-@bot.message_handler(func=lambda message: is_valid_url(message.text) and 'instagram.com' in message.text)
+
+# Handle direct URL for download (e.g., Instagram, YouTube, X/Twitter, Facebook)
+@bot.message_handler(func=lambda message: is_valid_url(message.text) and any(platform in message.text for platform in ['instagram.com', 'youtube.com', 'youtu.be', 'x.com', 'facebook.com']))
 def handle_direct_download(message):
     url = message.text
     mega_client = mega_clients.get(message.chat.id, None)
@@ -211,6 +222,7 @@ def handle_direct_download(message):
         return
     # Direct download without uploading to Mega
     handle_download_and_upload(message, url, upload_to_mega_flag=False, mega_client=mega_client)
+
 
 # Flask app for webhook
 app = Flask(__name__)
