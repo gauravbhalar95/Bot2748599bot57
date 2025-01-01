@@ -47,6 +47,25 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Extract video URL using yt-dlp
+def extract_video_url(url):
+    ydl_opts = {
+        'quiet': True,
+        'extract_flat': True,  # Extract only the video URL
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            video_url = info_dict.get('url', None)  # Extract the video URL
+            if video_url:
+                return video_url
+            else:
+                return None
+    except Exception as e:
+        logging.error(f"Error extracting video URL: {e}")
+        return None
+
 # Download media using yt-dlp
 def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
@@ -98,8 +117,14 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
-        # Download media
-        file_path = download_media(url, start_time, end_time)
+        # Extract the direct video URL
+        video_url = extract_video_url(url)
+        if not video_url:
+            bot2.reply_to(message, "Failed to extract the video URL.")
+            return
+
+        # Download media from extracted URL
+        file_path = download_media(video_url, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
