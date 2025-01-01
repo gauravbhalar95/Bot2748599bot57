@@ -4,11 +4,11 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega
-import time
+from datetime import datetime
 
-# Load environment variables
+# Environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 
@@ -32,12 +32,18 @@ SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'faceb
 # Mega client
 mega_client = None
 
-# Sanitize filenames for downloaded files
+# Sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-# Check if a URL is valid and supported
+# Add timestamp to filenames
+def add_timestamp_to_filename(filename):
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    name, ext = os.path.splitext(filename)
+    return f"{name}_{timestamp}{ext}"
+
+# Validate URL
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -45,64 +51,66 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Download media using yt-dlp
-def download_media(url):
+# Download media
+def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'retries': 5,
     }
+    if start_time or end_time:
+        ydl_opts['postprocessor_args'] = []
+        if start_time:
+            ydl_opts['postprocessor_args'] += ['-ss', start_time]
+        if end_time:
+            ydl_opts['postprocessor_args'] += ['-to', end_time]
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path
+            timestamped_file_path = add_timestamp_to_filename(file_path)
+            os.rename(file_path, timestamped_file_path)
+        return timestamped_file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-# Upload file to a specific folder on Mega.nz
+# Upload to Mega.nz
 def upload_to_mega(file_path, folder_name=None):
-    if mega_client is None:
+    if not mega_client:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
         folder = None
         if folder_name:
-            # Find the folder by name
             folders = mega_client.find(folder_name)
             if not folders:
                 raise Exception(f"Folder '{folder_name}' not found on Mega.nz")
-            folder = folders[0]  # Assume the first match is the correct one
+            folder = folders[0]
 
-        # Upload the file to the specified folder
-        if folder:
-            file = mega_client.upload(file_path, folder)
-        else:
-            file = mega_client.upload(file_path)  # Upload to root if no folder specified
-
-        # Get public link
+        file = mega_client.upload(file_path, folder) if folder else mega_client.upload(file_path)
         public_link = mega_client.get_upload_link(file)
         return public_link
     except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
+        logging.error("Mega upload error", exc_info=True)
         raise
 
-# Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
+# Handle download/upload
+def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None, start_time=None, end_time=None):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
 
     try:
         bot2.reply_to(message, "Downloading the video, please wait...")
-        file_path = download_media(url)
+        file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
-            bot2.reply_to(message, f"Uploading the video to Mega.nz folder '{folder_name}', please wait...")
+            bot2.reply_to(message, f"Uploading to Mega.nz folder '{folder_name}', please wait...")
             mega_link = upload_to_mega(file_path, folder_name)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+            bot2.reply_to(message, f"Uploaded to Mega.nz: {mega_link}")
         else:
             with open(file_path, 'rb') as video:
                 bot2.send_video(message.chat.id, video)
@@ -110,9 +118,9 @@ def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=No
         os.remove(file_path)
     except Exception as e:
         logging.error("Download or upload failed", exc_info=True)
-        bot2.reply_to(message, f"Download or upload failed: {str(e)}")
+        bot2.reply_to(message, f"Failed: {str(e)}")
 
-# Mega login command
+# Mega login
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     global mega_client
@@ -133,19 +141,16 @@ def handle_mega_login(message):
 # Handle /mega command
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL> [folder_name]")
-            return
+    args = message.text.split(maxsplit=2)
+    if len(args) < 2:
+        bot2.reply_to(message, "Usage: /mega <URL> [folder_name]")
+        return
 
-        url = args[1]
-        folder_name = args[2] if len(args) > 2 else None
-        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
-    except Exception as e:
-        bot2.reply_to(message, f"Error: {str(e)}")
+    url = args[1]
+    folder_name = args[2] if len(args) > 2 else None
+    handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
 
-# Handle direct download
+# Direct download
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
     url = message.text.strip()
@@ -154,7 +159,7 @@ def handle_direct_download(message):
     else:
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
-# Flask app for webhook
+# Flask app
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN_2, methods=['POST'])
