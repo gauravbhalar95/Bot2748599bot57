@@ -159,29 +159,24 @@ def handle_mega_login(message):
 
 
 # Handle media download and upload requests
-@bot.message_handler(commands=['download'])
+@bot.message_handler(func=lambda message: is_valid_url(message.text))  # This triggers when a valid URL is found
 def handle_media_download(message):
-    url = message.text.split(maxsplit=1)
-    if len(url) != 2:
-        bot.reply_to(message, "Please provide a valid URL.")
-        return
-
-    url = url[1]
+    url = message.text
     handle_download_and_upload(message, url, upload_to_mega_flag=True)
 
 
 # Flask app for webhook
 app = Flask(__name__)
 
-@app.route('/' + API_TOKEN_2, methods=['POST'])
+@app.route('/' + API_TOKEN, methods=['POST'])
 def bot_webhook():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
 @app.route('/')
 def set_webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
+    bot.remove_webhook()
+    bot.set_webhook(url=KOYEB_URL + '/' + API_TOKEN, timeout=60)
     return "Webhook set", 200
 
 if __name__ == "__main__":
