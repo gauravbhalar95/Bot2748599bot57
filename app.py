@@ -8,6 +8,7 @@ import yt_dlp
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
+from urlextract import URLExtract  # Importing urlextract
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -33,6 +34,9 @@ SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'faceb
 
 # Mega client
 mega_client = None
+
+# URL extractor
+extractor = URLExtract()
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
@@ -200,11 +204,15 @@ def handle_mega(message):
 # Direct download without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
-    url = message.text.strip()
-    if is_valid_url(url):
-        handle_download_and_upload(message, url, upload_to_mega_flag=False)
+    urls = extractor.find_urls(message.text)  # Extract URLs using urlextract
+    if urls:
+        for url in urls:
+            if is_valid_url(url):
+                handle_download_and_upload(message, url, upload_to_mega_flag=False)
+            else:
+                bot2.reply_to(message, f"Invalid URL: {url}")
     else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
+        bot2.reply_to(message, "No valid URLs found in your message.")
 
 # Flask app for webhook
 app = Flask(__name__)
