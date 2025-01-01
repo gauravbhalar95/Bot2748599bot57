@@ -1,18 +1,15 @@
 import os
 import logging
-import re
-import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
+import re
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
-from urlextract import URLExtract  # Importing urlextract
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
 KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 
 # Initialize bot
@@ -35,13 +32,16 @@ SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'faceb
 # Mega client
 mega_client = None
 
-# URL extractor
-extractor = URLExtract()
-
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
+
+# Add timestamp to the filename
+def add_timestamp_to_filename(file_path):
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    filename, ext = os.path.splitext(file_path)
+    return f"{filename}_{timestamp}{ext}"
 
 # Check if a URL is valid and supported
 def is_valid_url(url):
@@ -51,63 +51,114 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Extract video URL based on the platform
-def extract_video_url(url):
-    try:
-        # Check if the URL is from a supported domain
-        parsed_url = urlparse(url)
-        if 'youtube.com' in parsed_url.netloc or 'youtu.be' in parsed_url.netloc:
-            # For YouTube, extract the video URL or ID
-            video_url = f"https://www.youtube.com/watch?v={parse_qs(parsed_url.query).get('v', [None])[0]}"
-            return video_url
-        elif 'instagram.com' in parsed_url.netloc:
-            # Add Instagram URL extraction logic here
-            video_url = url  # Assuming Instagram URL is directly provided
-            return video_url
-        elif 'x.com' in parsed_url.netloc:
-            # Add logic for extracting from X (formerly Twitter)
-            video_url = url  # Placeholder, needs further URL parsing if needed
-            return video_url
-        elif 'facebook.com' in parsed_url.netloc:
-            # Add Facebook URL extraction logic
-            video_url = url  # Placeholder
-            return video_url
-        else:
-            raise ValueError("Unsupported platform URL")
-    except Exception as e:
-        logging.error(f"Failed to extract video URL: {str(e)}")
-        return None
-
-# Download media using yt-dlp
-def download_media(url, start_time=None, end_time=None):
+# Download media using yt-dlp (for YouTube)
+def download_youtube_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 10,
+        'cookiefile': cookies_file,  # Use cookies for authentication
         'retries': 5,
+        'extract_flat': False,        # Ensure proper extraction
     }
-
-    if start_time and end_time:
-        ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
+    if start_time or end_time:
+        ydl_opts['postprocessor_args'] = []
+        if start_time:
+            ydl_opts['postprocessor_args'] += ['-ss', start_time]
+        if end_time:
+            ydl_opts['postprocessor_args'] += ['-to', end_time]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path
+            timestamped_file_path = add_timestamp_to_filename(file_path)
+            os.rename(file_path, timestamped_file_path)
+        return timestamped_file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
-        raise
+        raise Exception(f"Download failed: {str(e)}")
+
+# Download Instagram media (via Instagram scraper API or yt-dlp)
+def download_instagram_media(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'retries': 5,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            timestamped_file_path = add_timestamp_to_filename(file_path)
+            os.rename(file_path, timestamped_file_path)
+        return timestamped_file_path
+    except Exception as e:
+        logging.error("Instagram download error", exc_info=True)
+        raise Exception(f"Instagram download failed: {str(e)}")
+
+# Download Facebook media (via yt-dlp)
+def download_facebook_media(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'retries': 5,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            timestamped_file_path = add_timestamp_to_filename(file_path)
+            os.rename(file_path, timestamped_file_path)
+        return timestamped_file_path
+    except Exception as e:
+        logging.error("Facebook download error", exc_info=True)
+        raise Exception(f"Facebook download failed: {str(e)}")
+
+# Download Twitter media (via yt-dlp)
+def download_twitter_media(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': cookies_file,
+        'retries': 5,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            timestamped_file_path = add_timestamp_to_filename(file_path)
+            os.rename(file_path, timestamped_file_path)
+        return timestamped_file_path
+    except Exception as e:
+        logging.error("Twitter download error", exc_info=True)
+        raise Exception(f"Twitter download failed: {str(e)}")
 
 # Upload file to Mega.nz
-def upload_to_mega(file_path):
+def upload_to_mega(file_path, folder_name=None):
     if mega_client is None:
         raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
 
     try:
-        file = mega_client.upload(file_path)
+        folder = None
+        if folder_name:
+            # Find the folder by name
+            folders = mega_client.find(folder_name)
+            if not folders:
+                raise Exception(f"Folder '{folder_name}' not found on Mega.nz")
+            folder = folders[0]  # Assume the first match is the correct one
+
+        # Upload the file to the specified folder
+        if folder:
+            file = mega_client.upload(file_path, folder)
+        else:
+            file = mega_client.upload(file_path)  # Upload to root if no folder specified
+
+        # Get public link
         public_link = mega_client.get_upload_link(file)
         return public_link
     except Exception as e:
@@ -115,104 +166,89 @@ def upload_to_mega(file_path):
         raise
 
 # Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
-    if not is_valid_url(url):
-        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+def handle_download_and_upload(message, url, upload_to_mega_flag, platform, folder_name=None, start_time=None, end_time=None):
+    if platform == 'youtube':
+        file_path = download_youtube_media(url, start_time, end_time)
+    elif platform == 'instagram':
+        file_path = download_instagram_media(url)
+    elif platform == 'facebook':
+        file_path = download_facebook_media(url)
+    elif platform == 'twitter':
+        file_path = download_twitter_media(url)
+    else:
+        bot2.reply_to(message, "Unsupported platform.")
         return
 
-    try:
-        # Extract video URL
-        video_url = extract_video_url(url)
-        if not video_url:
-            bot2.reply_to(message, "Failed to extract the video URL.")
-            return
-        
-        bot2.reply_to(message, "Downloading the video, please wait...")
+    if upload_to_mega_flag:
+        bot2.reply_to(message, f"Uploading the video to Mega.nz folder '{folder_name}', please wait...")
+        mega_link = upload_to_mega(file_path, folder_name)
+        bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+    else:
+        with open(file_path, 'rb') as video:
+            bot2.send_video(message.chat.id, video)
 
-        # Extract start and end times if provided in the YouTube URL
-        parsed_url = urlparse(video_url)
-        query_params = parse_qs(parsed_url.query)
-        start_time = query_params.get('start', [None])[0]
-        end_time = query_params.get('end', [None])[0]
+    os.remove(file_path)
 
-        # Download media
-        file_path = download_media(video_url, start_time, end_time)
-
-        if upload_to_mega_flag:
-            # Upload to Mega.nz
-            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
-        else:
-            # Send video directly
-            with open(file_path, 'rb') as video:
-                bot2.send_video(message.chat.id, video)
-
-        # Cleanup
-        os.remove(file_path)
-    except Exception as e:
-        logging.error("Download or upload failed", exc_info=True)
-        bot2.reply_to(message, f"Download or upload failed: {str(e)}")
-
-# Mega login command with retries and error handling
+# Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     global mega_client
     try:
         args = message.text.split(maxsplit=2)
         if len(args) == 1:
-            # Perform anonymous login if no email and password are provided
             mega_client = Mega().login()  # Anonymous login
             bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
         elif len(args) == 3:
-            # Perform login using email and password with retries
-            email = args[1]
-            password = args[2]
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    mega_client = Mega().login(email, password)
-                    bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-                    break  # Exit the loop if login is successful
-                except Exception as e:
-                    if "Expecting value" in str(e):
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
-                        time.sleep(5)  # Wait 5 seconds before retrying
-                    else:
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
-                        break  # Exit the loop if it's not a JSONDecodeError
+            email, password = args[1], args[2]
+            mega_client = Mega().login(email, password)
+            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
         else:
             bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
-
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-# Mega download and upload handler remains the same as before
+# Handle /mega command
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [folder_name] [start_time] [end_time]")
             return
 
         url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+        platform = 'youtube'  # Default platform (can be extended as needed)
+        if 'instagram.com' in url:
+            platform = 'instagram'
+        elif 'facebook.com' in url:
+            platform = 'facebook'
+        elif 'twitter.com' in url:
+            platform = 'twitter'
+        
+        folder_name = args[2] if len(args) > 2 else None
+        start_time = args[3] if len(args) > 3 else None
+        end_time = args[4] if len(args) > 4 else None
+        
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, platform=platform, folder_name=folder_name, start_time=start_time, end_time=end_time)
+    except Exception as e:
+        bot2.reply_to(message, f"Error: {str(e)}")
 
-# Direct download without Mega.nz
+# Handle direct download
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
-    urls = extractor.find_urls(message.text)  # Extract URLs using urlextract
-    if urls:
-        for url in urls:
-            if is_valid_url(url):
-                handle_download_and_upload(message, url, upload_to_mega_flag=False)
-            else:
-                bot2.reply_to(message, f"Invalid URL: {url}")
+    url = message.text.strip()
+    if is_valid_url(url):
+        platform = 'youtube'  # Default platform (can be extended as needed)
+        if 'instagram.com' in url:
+            platform = 'instagram'
+        elif 'facebook.com' in url:
+            platform = 'facebook'
+        elif 'twitter.com' in url:
+            platform = 'twitter'
+        
+        handle_download_and_upload(message, url, upload_to_mega_flag=False, platform=platform)
     else:
-        bot2.reply_to(message, "No valid URLs found in your message.")
+        bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
 # Flask app for webhook
 app = Flask(__name__)
