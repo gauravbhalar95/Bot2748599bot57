@@ -170,25 +170,19 @@ def handle_media_download(message):
     handle_download_and_upload(message, url, upload_to_mega_flag=True)
 
 
-# Webhook setup (for Koyeb or other hosting services)
+# Flask app for webhook
 app = Flask(__name__)
 
-@app.route(f'/{API_TOKEN}', methods=['POST'])
-def webhook():
-    json_str = request.get_data().decode('UTF-8')
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "OK"
+@app.route('/' + API_TOKEN_2, methods=['POST'])
+def bot_webhook():
+    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "!", 200
 
-
-# Set webhook
+@app.route('/')
 def set_webhook():
-    webhook_url = f"{KOYEB_URL}/{API_TOKEN}"
-    bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
+    bot2.remove_webhook()
+    bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
+    return "Webhook set", 200
 
-
-# Start the Flask app (required for webhook)
 if __name__ == "__main__":
-    set_webhook()
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+    app.run(host='0.0.0.0', port=8080, debug=True)
