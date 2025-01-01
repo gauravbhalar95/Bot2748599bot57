@@ -32,9 +32,8 @@ logging.basicConfig(level=logging.DEBUG)
 # Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
-# Mega client
-mega_client = None
-
+# Mega client storage for multi-account support
+mega_clients = {}
 
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
@@ -76,12 +75,15 @@ def download_media(url, start_time=None, end_time=None):
 
 
 # Upload file to Mega.nz
-def upload_to_mega(file_path):
-    if mega_client is None:
-        raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
-
+def upload_to_mega(file_path, mega_client, folder=None):
     try:
-        file = mega_client.upload(file_path)
+        if folder:
+            folder = mega_client.find(folder)
+            if not folder:
+                raise ValueError(f"Folder '{folder}' not found.")
+            file = mega_client.upload(file_path, folder=folder)
+        else:
+            file = mega_client.upload(file_path)
         public_link = mega_client.get_upload_link(file)
         return public_link
     except Exception as e:
@@ -90,7 +92,7 @@ def upload_to_mega(file_path):
 
 
 # Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
+def handle_download_and_upload(message, url, upload_to_mega_flag, mega_client, folder=None):
     if not is_valid_url(url):
         bot.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
@@ -110,7 +112,7 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         if upload_to_mega_flag:
             # Upload to Mega.nz
             bot.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
+            mega_link = upload_to_mega(file_path, mega_client, folder)
             bot.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
         else:
             # Send video directly
@@ -127,12 +129,13 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
 # Mega login command with retries and error handling
 @bot.message_handler(commands=['meganz'])
 def handle_mega_login(message):
-    global mega_client
+    global mega_clients
     try:
         args = message.text.split(maxsplit=2)
         if len(args) == 1:
             # Perform anonymous login if no email and password are provided
             mega_client = Mega().login()  # Anonymous login
+            mega_clients[message.chat.id] = mega_client
             bot.reply_to(message, "Logged in to Mega.nz anonymously!")
         elif len(args) == 3:
             # Perform login using email and password with retries
@@ -142,6 +145,7 @@ def handle_mega_login(message):
             for attempt in range(retries):
                 try:
                     mega_client = Mega().login(email, password)
+                    mega_clients[message.chat.id] = mega_client
                     bot.reply_to(message, "Successfully logged in to Mega.nz!")
                     break  # Exit the loop if login is successful
                 except Exception as e:
@@ -159,10 +163,37 @@ def handle_mega_login(message):
 
 
 # Handle media download and upload requests
-@bot.message_handler(func=lambda message: is_valid_url(message.text))  # This triggers when a valid URL is found
+@bot.message_handler(func=lambda message: is_valid_url(message.text))
 def handle_media_download(message):
     url = message.text
-    handle_download_and_upload(message, url, upload_to_mega_flag=True)
+    mega_client = mega_clients.get(message.chat.id, None)
+    if not mega_client:
+        bot.reply_to(message, "You must log in to Mega.nz first using /meganz <username> <password>.")
+        return
+    handle_download_and_upload(message, url, upload_to_mega_flag=True, mega_client=mega_client)
+
+
+# Handle upload command with folder option
+@bot.message_handler(commands=['meganz_upload'])
+def handle_mega_upload(message):
+    try:
+        args = message.text.split(maxsplit=2)
+        if len(args) < 2:
+            bot.reply_to(message, "Usage: /meganz_upload <url> [folder] (optional)")
+            return
+
+        url = args[1]
+        folder = args[2] if len(args) > 2 else None
+
+        mega_client = mega_clients.get(message.chat.id, None)
+        if not mega_client:
+            bot.reply_to(message, "You must log in to Mega.nz first using /meganz <username> <password>.")
+            return
+
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, mega_client=mega_client, folder=folder)
+    except Exception as e:
+        logging.error("Error handling Mega upload", exc_info=True)
+        bot.reply_to(message, f"Error: {str(e)}")
 
 
 # Flask app for webhook
