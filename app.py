@@ -1,14 +1,13 @@
 import os
 import logging
+import re
+import threading
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
-import json
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -35,12 +34,10 @@ SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'faceb
 # Mega client
 mega_client = None
 
-
 # Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
-
 
 # Check if a URL is valid and supported
 def is_valid_url(url):
@@ -49,7 +46,6 @@ def is_valid_url(url):
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
-
 
 # Download media using yt-dlp
 def download_media(url, start_time=None, end_time=None):
@@ -74,7 +70,6 @@ def download_media(url, start_time=None, end_time=None):
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
-
 # Upload file to Mega.nz
 def upload_to_mega(file_path):
     if mega_client is None:
@@ -87,7 +82,6 @@ def upload_to_mega(file_path):
     except Exception as e:
         logging.error("Error uploading to Mega", exc_info=True)
         raise
-
 
 # Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
@@ -123,7 +117,6 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         logging.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
-
 # Mega login command with retries and error handling
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
@@ -157,7 +150,6 @@ def handle_mega_login(message):
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-
 # Mega download and upload handler remains the same as before
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
@@ -172,7 +164,6 @@ def handle_mega(message):
     except IndexError:
         bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
 
-
 # Direct download without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
@@ -182,7 +173,6 @@ def handle_direct_download(message):
     else:
         bot2.reply_to(message, "Please provide a valid URL to download the video.")
 
-
 # Flask app for webhook
 app = Flask(__name__)
 
@@ -191,13 +181,11 @@ def bot_webhook():
     bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
-
 @app.route('/')
 def set_webhook():
     bot2.remove_webhook()
     bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
     return "Webhook set", 200
-
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
