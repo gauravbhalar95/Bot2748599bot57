@@ -4,11 +4,9 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-import subprocess
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
-import json
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
@@ -124,63 +122,47 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 
-# Mega login command with retries and error handling
+# Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     global mega_client
+    args = message.text.split(maxsplit=2)
+
     try:
-        args = message.text.split(maxsplit=2)
         if len(args) == 1:
-            # Perform anonymous login if no email and password are provided
-            mega_client = Mega().login()  # Anonymous login
+            # Anonymous login
+            mega_client = Mega().login()
             bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
         elif len(args) == 3:
-            # Perform login using email and password with retries
-            email = args[1]
-            password = args[2]
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    mega_client = Mega().login(email, password)
-                    bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-                    break  # Exit the loop if login is successful
-                except Exception as e:
-                    if "Expecting value" in str(e):
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
-                        time.sleep(5)  # Wait 5 seconds before retrying
-                    else:
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
-                        break  # Exit the loop if it's not a JSONDecodeError
+            email, password = args[1], args[2]
+            mega_client = Mega().login(email, password)
+            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
         else:
-            bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
-
+            bot2.reply_to(message, "Usage: /meganz <username> <password>")
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
-# Mega download and upload handler remains the same as before
+# Download and upload using Mega.nz
 @bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=1)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
-            return
+def handle_mega_command(message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot2.reply_to(message, "Usage: /mega <URL>")
+        return
 
-        url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+    url = args[1]
+    handle_download_and_upload(message, url, upload_to_mega_flag=True)
 
 
-# Direct download without Mega.nz
+# Direct text for downloading without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
 def handle_direct_download(message):
     url = message.text.strip()
     if is_valid_url(url):
         handle_download_and_upload(message, url, upload_to_mega_flag=False)
     else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
+        bot2.reply_to(message, "Please provide a valid URL.")
 
 
 # Flask app for webhook
