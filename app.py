@@ -124,11 +124,15 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 
-# Mega login command with retries and error handling
+# Mega login command with checks to allow login only once
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
     global mega_client
     try:
+        if mega_client is not None:
+            bot2.reply_to(message, "You are already logged in to Mega.nz.")
+            return
+        
         args = message.text.split(maxsplit=2)
         if len(args) == 1:
             # Perform anonymous login if no email and password are provided
@@ -158,6 +162,19 @@ def handle_mega_login(message):
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
+# Mega logout command
+@bot2.message_handler(commands=['logout'])
+def handle_logout(message):
+    global mega_client
+    try:
+        if mega_client is None:
+            bot2.reply_to(message, "You are not logged in to Mega.nz.")
+        else:
+            mega_client.logout()
+            mega_client = None  # Reset the mega_client
+            bot2.reply_to(message, "Logged out from Mega.nz successfully.")
+    except Exception as e:
+        bot2.reply_to(message, f"Logout failed: {str(e)}")
 # Mega download and upload handler remains the same as before
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
