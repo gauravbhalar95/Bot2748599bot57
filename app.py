@@ -4,7 +4,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega
 import time
 
@@ -137,31 +137,6 @@ def handle_mega_logout(message):
         bot2.reply_to(message, "Logged out from Mega.nz successfully!")
     else:
         bot2.reply_to(message, "You are not logged into Mega.nz.")
-
-# List Mega folders
-@bot2.message_handler(commands=['folder'])
-def handle_list_folders(message):
-    global mega_client
-
-    if mega_client is None:
-        bot2.reply_to(message, "Mega client is not logged in. Use /meganz <username> <password> to log in.")
-        return
-
-    try:
-        folders = mega_client.get_files()
-        folder_list = [
-            details['a']['n']
-            for file_id, details in folders.items()
-            if details.get('a', {}).get('t') == 1
-        ]
-
-        if folder_list:
-            bot2.reply_to(message, "Folders in your Mega.nz account:\n" + "\n".join(folder_list))
-        else:
-            bot2.reply_to(message, "No folders found in your Mega.nz account.")
-    except Exception as e:
-        logging.error("Error listing folders", exc_info=True)
-        bot2.reply_to(message, f"Failed to list folders: {str(e)}")
 
 # Flask app for webhook
 app = Flask(__name__)
