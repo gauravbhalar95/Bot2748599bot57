@@ -9,27 +9,36 @@ from mega import Mega
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')
-KOYEB_URL = os.getenv('KOYEB_URL')
+CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
+KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
 
+# Initialize bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
 
+# Directories
 output_dir = 'downloads/'
 cookies_file = 'cookies.txt'
 
+# Ensure downloads directory exists
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
+# Logging configuration
 logging.basicConfig(level=logging.DEBUG)
 
+# Supported domains
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
 
+# Mega client
 mega_client = None
+mega_logged_in = False
 
+# Sanitize filenames for downloaded files
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
+# Check if a URL is valid and supported
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -37,108 +46,102 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-def download_media(url, start_time=None, end_time=None):
-    ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-        'socket_timeout': 10,
-        'retries': 5,
-    }
-    if start_time and end_time:
-        ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-        return file_path
-    except Exception as e:
-        logging.error("yt-dlp download error", exc_info=True)
-        raise
-
-def upload_to_mega(file_path, folder_name=None):
-    if mega_client is None:
-        raise Exception("Mega client is not logged in.")
-    try:
-        if folder_name:
-            folders = mega_client.find(folder_name)
-            if not folders:
-                folder = mega_client.create_folder(folder_name)
-            else:
-                folder = folders[0]
-            file = mega_client.upload(file_path, folder)
-        else:
-            file = mega_client.upload(file_path)
-        return mega_client.get_upload_link(file)
-    except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
-        raise
-
-def get_storage_space():
-    if mega_client is None:
-        raise Exception("Mega client is not logged in.")
-    try:
-        space = mega_client.get_storage_space(kilo=True)
-        used_space = space['used']
-        total_space = space['total']
-        return f"Storage used: {used_space} KB, Total: {total_space} KB"
-    except Exception as e:
-        logging.error("Error retrieving storage space", exc_info=True)
-        raise
-
 # Mega login command
 @bot2.message_handler(commands=['meganz'])
 def handle_mega_login(message):
-    global mega_client
+    global mega_client, mega_logged_in
+    if mega_logged_in:
+        bot2.reply_to(message, "Already logged in to Mega.nz!")
+        return
+
     args = message.text.split(maxsplit=2)
 
     try:
-        if mega_client:
-            bot2.reply_to(message, "Already logged in to Mega.nz!")
-            return
-
         if len(args) == 1:
+            # Anonymous login
             mega_client = Mega().login()
-            bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
         elif len(args) == 3:
             email, password = args[1], args[2]
             mega_client = Mega().login(email, password)
-            bot2.reply_to(message, "Successfully logged in to Mega.nz!")
         else:
             bot2.reply_to(message, "Usage: /meganz <username> <password>")
+            return
+
+        mega_logged_in = True
+        bot2.reply_to(message, "Successfully logged in to Mega.nz!")
     except Exception as e:
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
-# Logout from Mega
+# Logout command
 @bot2.message_handler(commands=['logout'])
-def handle_mega_logout(message):
-    global mega_client
-    if not mega_client:
+def handle_logout(message):
+    global mega_client, mega_logged_in
+    if not mega_logged_in:
         bot2.reply_to(message, "Not logged in to Mega.nz!")
         return
-    mega_client = None
-    bot2.reply_to(message, "Logged out of Mega.nz!")
 
-# List all folders
+    mega_client = None
+    mega_logged_in = False
+    bot2.reply_to(message, "Logged out from Mega.nz.")
+
+# Folder listing command
 @bot2.message_handler(commands=['folder'])
-def handle_list_folders(message):
-    if not mega_client:
-        bot2.reply_to(message, "Mega.nz is not logged in!")
+def handle_folder_list(message):
+    if not mega_logged_in:
+        bot2.reply_to(message, "Please log in to Mega.nz first using /meganz.")
         return
 
     try:
-        folders = mega_client.get_files_in_node(mega_client.get_node_by_type(2))  # Root directory
-        folder_list = [f"<b>{folder['a']['n']}</b>" for folder in folders.values() if folder['t'] == 1]
-        if folder_list:
-            bot2.reply_to(message, "\n".join(folder_list), parse_mode='HTML')
-        else:
-            bot2.reply_to(message, "No folders found!")
+        folders = mega_client.get_files()
+        folder_list = "\n".join(f["a"]["n"] for f in folders.values() if f["t"] == 1)
+        response = f"Available folders:\n{folder_list}" if folder_list else "No folders found."
+        bot2.reply_to(message, response)
     except Exception as e:
-        bot2.reply_to(message, f"Failed to fetch folders: {str(e)}")
+        bot2.reply_to(message, f"Failed to list folders: {str(e)}")
 
-# Other commands remain unchanged...
+# Download and upload using Mega.nz
+@bot2.message_handler(commands=['mega'])
+def handle_mega_command(message):
+    if not mega_logged_in:
+        bot2.reply_to(message, "Please log in to Mega.nz first using /meganz.")
+        return
+
+    args = message.text.split(maxsplit=2)
+    if len(args) < 2:
+        bot2.reply_to(message, "Usage: /mega <URL> [folder_name]")
+        return
+
+    url = args[1]
+    folder_name = args[2] if len(args) > 2 else None
+    handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
+
+# Handle download and upload with folder support
+def handle_download_and_upload(message, url, upload_to_mega_flag, folder_name=None):
+    if not is_valid_url(url):
+        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        return
+
+    try:
+        bot2.reply_to(message, "Downloading the video, please wait...")
+
+        # Download media
+        file_path = download_media(url)
+
+        if upload_to_mega_flag:
+            # Upload to Mega.nz
+            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
+            mega_link = upload_to_mega(file_path, folder_name)
+            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+        else:
+            # Send video directly
+            with open(file_path, 'rb') as video:
+                bot2.send_video(message.chat.id, video)
+
+        # Cleanup
+        os.remove(file_path)
+    except Exception as e:
+        logging.error("Download or upload failed", exc_info=True)
+        bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 # Flask app for webhook
 app = Flask(__name__)
