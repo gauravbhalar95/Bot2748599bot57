@@ -179,15 +179,39 @@ def handle_logout(message):
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)  # Split into at most 3 parts
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [folder]\nExample: /mega https://mega.nz/folder/abc123")
             return
 
-        url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
+        url = args[1]  # Mega.nz folder or file URL
+        folder = args[2] if len(args) > 2 else None  # Optional folder name
+
+        # Pass the URL and folder to the download/upload handler
+        handle_download_and_upload(message, url, folder, upload_to_mega_flag=True)
+    except Exception as e:
+        bot2.reply_to(message, f"Error: {str(e)}")
+
+# Command handler for /folder
+@bot.message_handler(commands=['folder'])
+def handle_folder_command(message):
+    try:
+        folder_url = message.text.split(" ", 1)[1]  # Extract the folder link
+        bot.reply_to(message, "Fetching files from the folder...")
+        
+        # Get files from the Mega folder
+        folder_info = m.get_files_from_url(folder_url)
+        
+        # Create a response with file details
+        response = "Files in the folder:\n"
+        for file_id, file_data in folder_info.items():
+            response += f"- {file_data['name']} ({file_data['size'] // (1024 * 1024)} MB)\n"
+        
+        bot.reply_to(message, response)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+        bot.reply_to(message, "Please provide a Mega folder URL. Usage: /folder <MEGA_FOLDER_URL>")
+    except Exception as e:
+        bot.reply_to(message, f"Error: {str(e)}")
 
 
 # Direct download without Mega.nz
