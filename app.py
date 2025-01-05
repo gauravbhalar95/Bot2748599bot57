@@ -192,7 +192,7 @@ def handle_mega(message):
     except Exception as e:
         bot2.reply_to(message, f"Error: {str(e)}")
 
-@bot.message_handler(commands=['folder'])
+@bot2.message_handler(commands=['folder'])
 def get_files_from_folder(message):
     try:
         # Parse the folder URL from the message
