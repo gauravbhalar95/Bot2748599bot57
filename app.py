@@ -193,11 +193,11 @@ def handle_mega(message):
         bot2.reply_to(message, f"Error: {str(e)}")
 
 # Command handler for /folder
-@bot.message_handler(commands=['folder'])
+@bot2.message_handler(commands=['folder'])
 def handle_folder_command(message):
     try:
         folder_url = message.text.split(" ", 1)[1]  # Extract the folder link
-        bot.reply_to(message, "Fetching files from the folder...")
+        bot2.reply_to(message, "Fetching files from the folder...")
         
         # Get files from the Mega folder
         folder_info = m.get_files_from_url(folder_url)
@@ -207,11 +207,11 @@ def handle_folder_command(message):
         for file_id, file_data in folder_info.items():
             response += f"- {file_data['name']} ({file_data['size'] // (1024 * 1024)} MB)\n"
         
-        bot.reply_to(message, response)
+        bot2.reply_to(message, response)
     except IndexError:
-        bot.reply_to(message, "Please provide a Mega folder URL. Usage: /folder <MEGA_FOLDER_URL>")
+        bot2.reply_to(message, "Please provide a Mega folder URL. Usage: /folder <MEGA_FOLDER_URL>")
     except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
+        bot2.reply_to(message, f"Error: {str(e)}")
 
 
 # Direct download without Mega.nz
