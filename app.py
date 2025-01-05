@@ -192,26 +192,45 @@ def handle_mega(message):
     except Exception as e:
         bot2.reply_to(message, f"Error: {str(e)}")
 
-# Command handler for /folder
-@bot2.message_handler(commands=['folder'])
-def handle_folder_command(message):
+@bot.message_handler(commands=['folder'])
+def get_files_from_folder(message):
     try:
-        folder_url = message.text.split(" ", 1)[1]  # Extract the folder link
-        bot2.reply_to(message, "Fetching files from the folder...")
+        # Parse the folder URL from the message
+        folder_url = message.text.split(' ', 1)[1]  # The folder URL should be after the command
+        bot2.send_message(message.chat.id, "Fetching files and account details...")
         
-        # Get files from the Mega folder
-        folder_info = m.get_files_from_url(folder_url)
+        # Get account info
+        account_info = mega_client.get_user()
+        account_name = account_info['name']
+        account_email = account_info['email']
+        storage_info = mega_client.get_storage_space()
+        total_space = storage_info['total'] / (1024 * 1024 * 1024)  # Convert to GB
+        used_space = storage_info['used'] / (1024 * 1024 * 1024)    # Convert to GB
+
+        # Get files from the folder
+        folder = mega_client.folder(folder_url)
+        files = mega_client.get_files(folder)
         
-        # Create a response with file details
-        response = "Files in the folder:\n"
-        for file_id, file_data in folder_info.items():
-            response += f"- {file_data['name']} ({file_data['size'] // (1024 * 1024)} MB)\n"
-        
-        bot2.reply_to(message, response)
+        # Format the account details
+        account_details = (
+            f"**Account Information:**\n"
+            f"Name: {account_name}\n"
+            f"Email: {account_email}\n"
+            f"Storage Used: {used_space:.2f} GB / {total_space:.2f} GB\n\n"
+        )
+
+        # Format the file list
+        file_list = "**Files in the folder:**\n\n"
+        for file_id, file_info in files.items():
+            file_list += f"Name: {file_info['a']['n']}\nSize: {file_info['s']} bytes\n\n"
+
+        # Send account and file information
+        response = account_details + (file_list if file_list.strip() else "No files found in the folder.")
+        bot2.send_message(message.chat.id, response, parse_mode='Markdown')
     except IndexError:
-        bot2.reply_to(message, "Please provide a Mega folder URL. Usage: /folder <MEGA_FOLDER_URL>")
+        bot2.send_message(message.chat.id, "Please provide a valid folder URL after the command.")
     except Exception as e:
-        bot2.reply_to(message, f"Error: {str(e)}")
+        bot2.send_message(message.chat.id, f"An error occurred: {e}")
 
 
 # Direct download without Mega.nz
