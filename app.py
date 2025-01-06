@@ -158,7 +158,6 @@ def handle_mega_login(message):
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
-# Mega download and upload handler with folder name support
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
@@ -173,7 +172,6 @@ def handle_mega(message):
         handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
     except IndexError:
         bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [<FOLDER_NAME>].")
-
 
 # Direct download without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
