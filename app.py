@@ -169,9 +169,49 @@ def handle_mega(message):
         url = args[1]
         folder_name = args[2] if len(args) > 2 else None
 
-        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
-    except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [<FOLDER_NAME>].")
+        # Validate the URL
+        if not is_valid_url(url):
+            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+            return
+
+        bot2.reply_to(message, "Downloading the video, please wait...")
+
+        # Download media
+        file_path = download_media(url)
+
+        # Handle Mega.nz upload
+        if mega_client is None:
+            bot2.reply_to(message, "Mega.nz is not logged in. Use /meganz <username> <password> to log in.")
+            return
+
+        bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
+
+        # Find the folder on Mega.nz
+        folder = None
+        if folder_name:
+            folder = mega_client.find(folder_name)
+            if not folder:
+                bot2.reply_to(message, f"Folder '{folder_name}' not found. Uploading to the root directory instead.")
+                folder = None
+            else:
+                folder = folder[0]  # Use the first matched folder
+
+        # Upload file
+        try:
+            if folder:
+                uploaded_file = mega_client.upload(file_path, folder)
+            else:
+                uploaded_file = mega_client.upload(file_path)
+            
+            public_link = mega_client.get_upload_link(uploaded_file)
+            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {public_link}")
+        finally:
+            # Cleanup
+            os.remove(file_path)
+
+    except Exception as e:
+        logging.error("Error in /mega command", exc_info=True)
+        bot2.reply_to(message, f"An error occurred: {str(e)}")
 
 # Direct download without Mega.nz
 @bot2.message_handler(func=lambda message: True, content_types=['text'])
