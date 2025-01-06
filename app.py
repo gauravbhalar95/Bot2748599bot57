@@ -158,19 +158,21 @@ def handle_mega_login(message):
         bot2.reply_to(message, f"Login failed: {str(e)}")
 
 
-# Mega download and upload handler remains the same as before
+# Mega download and upload handler with folder name support
 @bot2.message_handler(commands=['mega'])
 def handle_mega(message):
     try:
-        args = message.text.split(maxsplit=1)
+        args = message.text.split(maxsplit=2)
         if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL>")
+            bot2.reply_to(message, "Usage: /mega <URL> [<FOLDER_NAME>]")
             return
 
         url = args[1]
-        handle_download_and_upload(message, url, upload_to_mega_flag=True)
+        folder_name = args[2] if len(args) > 2 else None
+
+        handle_download_and_upload(message, url, upload_to_mega_flag=True, folder_name=folder_name)
     except IndexError:
-        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL>.")
+        bot2.reply_to(message, "Please provide a valid URL after the command: /mega <URL> [<FOLDER_NAME>].")
 
 
 # Direct download without Mega.nz
