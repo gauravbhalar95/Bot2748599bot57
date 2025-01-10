@@ -91,10 +91,17 @@ def handle_instagram_profile_url(message):
     except Exception as e:
         bot2.reply_to(message, f"An error occurred: {str(e)}")
 
-# Function to download all posts from an Instagram profile
+# Function to download all posts from an Instagram profile using cookies
 def download_instagram_posts(username):
     loader = instaloader.Instaloader()
     try:
+        # Load cookies if available
+        if os.path.exists(cookies_file):
+            loader.load_session_from_file(username, cookies_file)
+        else:
+            bot2.reply_to(message, "No valid cookies found. Please log in to Instagram first.")
+            return "Error: Cookies are required for login."
+
         # Set output directory
         profile_dir = os.path.join(output_dir, username)
         os.makedirs(profile_dir, exist_ok=True)
