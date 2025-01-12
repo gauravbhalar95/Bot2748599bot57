@@ -1,6 +1,7 @@
 import os
 import logging
 from flask import Flask, request
+from telebot import TeleBot, types
 import telebot
 import yt_dlp
 import re
@@ -14,6 +15,12 @@ import json
 API_TOKEN_2 = os.getenv('API_TOKEN_2')
 CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
 KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
+
+# Define commands
+commands = [
+    types.BotCommand("/mega", "Show Mega options"),
+]
+bot.set_my_commands(commands)
 
 # Initialize bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
