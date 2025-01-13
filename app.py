@@ -51,12 +51,13 @@ def is_valid_url(url):
         return False
 
 
-# Download media using yt-dlp
 def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
+        'cookiefile': cookies_file,  # Ensure cookies.txt file exists
+        'username': os.getenv('INSTAGRAM_USERNAME'),
+        'password': os.getenv('INSTAGRAM_PASSWORD'),
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 5,
@@ -73,7 +74,6 @@ def download_media(url, start_time=None, end_time=None):
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
         raise
-
 
 # Upload file to Mega.nz
 def upload_to_mega(file_path):
