@@ -12,24 +12,18 @@
 # http://curl.haxx.se/rfc/cookie_spec.html
 # This is a generated file!  Do not edit.
 
-# Netscape HTTP Cookie File
-# http://curl.haxx.se/rfc/cookie_spec.html
-# This is a generated file!  Do not edit.
+.instagram.com	TRUE	/	TRUE	1771146692	mid	Z4I1wgABAAHroTQX-QXPPiMeLLKA
+.instagram.com	TRUE	/	TRUE	1771146693	datr	wjWCZ0dhvWLBrvNRo1NsH8pU
+.instagram.com	TRUE	/	TRUE	1768122738	ig_did	081F8369-1D9F-4D2C-B499-B8FAB9359079
+.instagram.com	TRUE	/	TRUE	1737392184	dpr	3.0921943187713623
+.instagram.com	TRUE	/	TRUE	1771347319	ps_l	1
+.instagram.com	TRUE	/	TRUE	1771347319	ps_n	1
+.instagram.com	TRUE	/	TRUE	1768236984	csrftoken	1B5yCihVwMIM1bN0j2nn2WUUPy9OjzfA
+.instagram.com	TRUE	/	TRUE	1737392184	wd	891x1692
+.instagram.com	TRUE	/	TRUE	1768323375	sessionid	67842185883%3AvENbvatF0WEGci%3A9%3AAYdP2lArPoWRpAsceHbO61T3L27p0-o0ize4xTWeaQ
+.instagram.com	TRUE	/	TRUE	1744563384	ds_user_id	67842185883
+.instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541768323384:01f756c242da7238091d10d750de02326d0319efc11975ad08317765a1d36c6c666d83ab"
 
-.instagram.com	TRUE	/	TRUE	1755830066	mid	Zph_MgABAAHCK6_--K576X-SVj0t
-.instagram.com	TRUE	/	TRUE	1752806118	ig_did	7AE3C3F7-B46A-44B6-8578-78C8B16CB022
-.instagram.com	TRUE	/	TRUE	1755830067	datr	Mn-YZkO8qDUMp_TK05H4JSJI
-.instagram.com	TRUE	/	TRUE	1752806103	ig_nrcb	1
-.instagram.com	TRUE	/	TRUE	1755853159	ps_n	1
-.instagram.com	TRUE	/	TRUE	1755853159	ps_l	1
-.instagram.com	TRUE	/	TRUE	1759162542	fbm_124024574287414	base_domain=.instagram.com
-.instagram.com	TRUE	/	TRUE	1729532425	dpr	2.8125
-.instagram.com	TRUE	/	TRUE	1736703631	ds_user_id	67842185883
-.instagram.com	TRUE	/	TRUE	1729532425	wd	384x729
-.instagram.com	TRUE	/	TRUE	1760377231	csrftoken	OLmkLuCpOv3gy6gjI6usYqUYEDv9DF95
-.instagram.com	TRUE	/	TRUE	1760433017	sessionid	67842185883%3AXX6WpvnbBf1Bd3%3A9%3AAYcrG0tXbjy7GazzA-0Hj8hMFvHfQEtbgggDN2uvlg
-.instagram.com	TRUE	/	TRUE	0	rur	"CCO\05467842185883\0541760463631:01f7d13afc6ef4a9a48bc8e5e673f94030c452a70a4e7d14bf0c40f3ee98730f6ab92dbd"
-yt-dlp --cookies cookies.txt https://www.instagram.com/username/
 
 
 # Netscape HTTP Cookie File
