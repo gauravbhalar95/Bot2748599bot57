@@ -10,3 +10,4 @@ mega.py
 pip-tools
 urlextract
 instaloader
+hikerapi
