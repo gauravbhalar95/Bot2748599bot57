@@ -1,4 +1,4 @@
-Flask
+Rewrite this requirement.txt "Flask
 pyTelegramBotAPI
 requests
 telebot
@@ -12,12 +12,20 @@ urlextract
 instaloader
 python-telegram-bot[webhooks]
 Werkzeug
+Flask
+python-telegram-bot
 youtube_dl
+requests
 Flask[async]
 nest_asyncio
+yt-dlp
 tqdm==4.62.3
+telebot
 uvicorn==0.22.0
+beautifulsoup4
+moviepy
 asyncio
 rq
 redis
 validators
+mega.py"
