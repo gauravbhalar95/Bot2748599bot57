@@ -1,243 +1,145 @@
 import os
 import logging
 from flask import Flask, request
-import telebot
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
-import re
-import subprocess
+import nest_asyncio
 from urllib.parse import urlparse, parse_qs
 from mega import Mega
+import re
 import time
-import json
 
-# Load environment variables
-API_TOKEN_2 = os.getenv('API_TOKEN_2')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
-KOYEB_URL = os.getenv('KOYEB_URL')  # Koyeb URL for webhook
+# Enable logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Initialize bot
-bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
+# Apply the patch for nested event loops
+nest_asyncio.apply()
 
-# Directories
-output_dir = 'downloads/'
-cookies_file = 'cookies.txt'
+# Environment variables
+API_TOKEN = os.getenv('BOT_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+PORT = int(os.getenv('PORT', 8443))  # Default to 8443 if not set
 
-# Ensure downloads directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+COOKIES_FILE = 'cookies.txt'
+OUTPUT_DIR = 'downloads/'
 
-# Logging configuration
-logging.basicConfig(level=logging.DEBUG)
+# Ensure directories and files
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+if not os.path.exists(COOKIES_FILE):
+    logger.warning(f"{COOKIES_FILE} not found. Some videos may require authentication.")
 
-# Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
-
-# Mega client
+# Initialize Mega client
 mega_client = None
 
+# Telegram bot application
+app = ApplicationBuilder().token(API_TOKEN).build()
 
-# Sanitize filenames for downloaded files
+# Utility: Sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-
-# Check if a URL is valid and supported
+# Utility: Validate URL
 def is_valid_url(url):
+    supported_domains = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
     try:
         result = urlparse(url)
-        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
+        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in supported_domains)
     except ValueError:
         return False
 
-
-# Download media using yt-dlp
+# Utility: Download media
 def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': cookies_file,
+        'outtmpl': f'{OUTPUT_DIR}{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 5,
     }
-
     if start_time and end_time:
         ydl_opts['postprocessor_args'] = ['-ss', start_time, '-to', end_time]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-        return file_path
+            return ydl.prepare_filename(info_dict)
     except Exception as e:
-        logging.error("yt-dlp download error", exc_info=True)
-        raise
+        logger.error(f"Error downloading media: {e}")
+        return None
 
-
-# Upload file to Mega.nz
+# Utility: Upload to Mega.nz
 def upload_to_mega(file_path):
     if mega_client is None:
-        raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
-
+        raise Exception("Mega.nz client not logged in. Use /meganz to log in.")
     try:
         file = mega_client.upload(file_path)
-        public_link = mega_client.get_upload_link(file)
-        return public_link
+        return mega_client.get_upload_link(file)
     except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
-        raise
+        logger.error(f"Error uploading to Mega: {e}")
+        return None
 
+# Command: /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Welcome! Send me a video link to download.")
 
-# Handle download and upload logic
-def handle_download_and_upload(message, url, upload_to_mega_flag):
+# Command: /meganz
+async def meganz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global mega_client
+    args = update.message.text.split()
+    try:
+        if len(args) == 1:
+            mega_client = Mega().login()
+            await update.message.reply_text("Logged in to Mega.nz anonymously!")
+        elif len(args) == 3:
+            email, password = args[1], args[2]
+            mega_client = Mega().login(email, password)
+            await update.message.reply_text("Successfully logged in to Mega.nz!")
+        else:
+            await update.message.reply_text("Usage: /meganz <username> <password> or /meganz for anonymous login")
+    except Exception as e:
+        await update.message.reply_text(f"Login failed: {e}")
+
+# Handle URLs for downloading and optionally uploading to Mega.nz
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text.strip()
     if not is_valid_url(url):
-        bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
+        await update.message.reply_text("Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
         return
 
-    try:
-        bot2.reply_to(message, "Downloading the video, please wait...")
+    await update.message.reply_text("Downloading video...")
+    video_path = download_media(url)
 
-        # Extract start and end times if provided in the YouTube URL
-        parsed_url = urlparse(url)
-        query_params = parse_qs(parsed_url.query)
-        start_time = query_params.get('start', [None])[0]
-        end_time = query_params.get('end', [None])[0]
+    if video_path is None:
+        await update.message.reply_text("Error: Video download failed.")
+        return
 
-        # Download media
-        file_path = download_media(url, start_time, end_time)
-
-        if upload_to_mega_flag:
-            # Upload to Mega.nz
-            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-            mega_link = upload_to_mega(file_path)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
+    if mega_client:
+        await update.message.reply_text("Uploading video to Mega.nz...")
+        mega_link = upload_to_mega(video_path)
+        if mega_link:
+            await update.message.reply_text(f"Video uploaded to Mega.nz: {mega_link}")
         else:
-            # Send video directly
-            with open(file_path, 'rb') as video:
-                bot2.send_video(message.chat.id, video)
-
-        # Cleanup
-        os.remove(file_path)
-    except Exception as e:
-        logging.error("Download or upload failed", exc_info=True)
-        bot2.reply_to(message, f"Download or upload failed: {str(e)}")
-
-
-# Mega login command with retries and error handling
-@bot2.message_handler(commands=['meganz'])
-def handle_mega_login(message):
-    global mega_client
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) == 1:
-            # Perform anonymous login if no email and password are provided
-            mega_client = Mega().login()  # Anonymous login
-            bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
-        elif len(args) == 3:
-            # Perform login using email and password with retries
-            email = args[1]
-            password = args[2]
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    mega_client = Mega().login(email, password)
-                    bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-                    break  # Exit the loop if login is successful
-                except Exception as e:
-                    if "Expecting value" in str(e):
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
-                        time.sleep(5)  # Wait 5 seconds before retrying
-                    else:
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
-                        break  # Exit the loop if it's not a JSONDecodeError
-        else:
-            bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
-
-    except Exception as e:
-        bot2.reply_to(message, f"Login failed: {str(e)}")
-
-
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL> [<FOLDER_NAME>]")
-            return
-
-        url = args[1]
-        folder_name = args[2] if len(args) > 2 else None
-
-        # Validate the URL
-        if not is_valid_url(url):
-            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
-            return
-
-        bot2.reply_to(message, "Downloading the video, please wait...")
-
-        # Download media
-        file_path = download_media(url)
-
-        # Handle Mega.nz upload
-        if mega_client is None:
-            bot2.reply_to(message, "Mega.nz is not logged in. Use /meganz <username> <password> to log in.")
-            return
-
-        bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-
-        # Find the folder on Mega.nz
-        folder = None
-        if folder_name:
-            folder = mega_client.find(folder_name)
-            if not folder:
-                bot2.reply_to(message, f"Folder '{folder_name}' not found. Uploading to the root directory instead.")
-                folder = None
-            else:
-                folder = folder[0]  # Use the first matched folder
-
-        # Upload file
-        try:
-            if folder:
-                uploaded_file = mega_client.upload(file_path, folder)
-            else:
-                uploaded_file = mega_client.upload(file_path)
-
-            public_link = mega_client.get_upload_link(uploaded_file)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {public_link}")
-        finally:
-            # Cleanup
-            os.remove(file_path)
-
-    except Exception as e:
-        logging.error("Error in /mega command", exc_info=True)
-        bot2.reply_to(message, f"An error occurred: {str(e)}")
-
-# Direct download without Mega.nz
-@bot2.message_handler(func=lambda message: True, content_types=['text'])
-def handle_direct_download(message):
-    url = message.text.strip()
-    if is_valid_url(url):
-        handle_download_and_upload(message, url, upload_to_mega_flag=False)
+            await update.message.reply_text("Error uploading to Mega.nz.")
     else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
+        with open(video_path, 'rb') as video:
+            await update.message.reply_video(video)
 
+    os.remove(video_path)
 
-# Flask app for webhook
-app = Flask(__name__)
+# Add handlers
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("meganz", meganz))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-@app.route('/' + API_TOKEN_2, methods=['POST'])
-def bot_webhook():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
-
-
-@app.route('/')
-def set_webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
-
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8080, debug=True)
+# Run the bot with webhook
+if __name__ == '__main__':
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=WEBHOOK_URL.split('/')[-1],
+        webhook_url=WEBHOOK_URL
+    )
