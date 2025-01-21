@@ -1,14 +1,12 @@
 import os
 import logging
-from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 import nest_asyncio
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega
 import re
-import time
 
 # Enable logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +18,7 @@ nest_asyncio.apply()
 # Environment variables
 API_TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-PORT = int(os.getenv('PORT', 8080))  # Default to 8443 if not set
+PORT = int(os.getenv('PORT', 8080))  # Default to 8080 if not set
 
 COOKIES_FILE = 'cookies.txt'
 OUTPUT_DIR = 'downloads/'
