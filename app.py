@@ -4,7 +4,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from mega import Mega
 import time
 import nest_asyncio
@@ -13,11 +13,10 @@ import nest_asyncio
 nest_asyncio.apply()
 
 # Environment variables
-API_TOKEN = os.getenv('BOT_TOKEN')  # Main bot token
+API_TOKEN = os.getenv('BOT_TOKEN')  # Bot token
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL
 CHANNEL_ID = os.getenv('CHANNEL_ID')
-PORT = int(os.getenv('PORT', 8080))  # Default to 8443
-KOYEB_URL = os.getenv('KOYEB_URL')  # Optional Koyeb URL for webhook
+PORT = int(os.getenv('PORT', 8080))  # Default to 8080
 COOKIES_FILE = 'cookies.txt'
 
 # Initialize the bot
@@ -32,7 +31,10 @@ DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = [
+    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
+    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com'
+]
 
 # Mega client
 mega_client = None
@@ -138,9 +140,8 @@ def webhook():
 
 @app.route('/')
 def set_webhook():
-    webhook_url = KOYEB_URL or WEBHOOK_URL
     bot.remove_webhook()
-    bot.set_webhook(url=webhook_url + '/' + API_TOKEN, timeout=60)
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
     return "Webhook set", 200
 
 if __name__ == '__main__':
