@@ -20,7 +20,7 @@ nest_asyncio.apply()
 # Environment variables
 API_TOKEN = os.getenv('BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-PORT = int(os.getenv('PORT', 8443))  # Default to 8443 if not set
+PORT = int(os.getenv('PORT', 8080))  # Default to 8443 if not set
 
 COOKIES_FILE = 'cookies.txt'
 OUTPUT_DIR = 'downloads/'
