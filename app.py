@@ -7,6 +7,7 @@ import nest_asyncio
 from urllib.parse import urlparse
 from mega import Mega
 import re
+from flask import Flask, jsonify
 
 # Enable logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +34,14 @@ mega_client = None
 
 # Telegram bot application
 app = ApplicationBuilder().token(API_TOKEN).build()
+
+# Flask app for health check
+flask_app = Flask(__name__)
+
+# Health check route
+@flask_app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy'}), 200
 
 # Utility: Sanitize filenames
 def sanitize_filename(filename, max_length=250):
@@ -133,8 +142,14 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("meganz", meganz))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Run the bot with webhook
+# Run the Flask app and the bot
 if __name__ == '__main__':
+    # Run Flask in the background
+    from threading import Thread
+    thread = Thread(target=flask_app.run, kwargs={'port': 8080, 'host': '0.0.0.0'})
+    thread.start()
+
+    # Run the Telegram bot with webhook
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
