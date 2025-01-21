@@ -71,7 +71,6 @@ def download_video(url):
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 5,
     }
@@ -115,11 +114,19 @@ def handle_message(message):
             else:
                 bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
         else:
+            # Try sending the video
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
     except Exception as e:
         logger.error(f"Error sending video: {e}")
-        bot.reply_to(message, f"Error sending video: {e}")
+        # Retry logic if sending fails (temporary solution)
+        time.sleep(5)  # Wait for 5 seconds before retrying
+        try:
+            with open(file_path, 'rb') as video:
+                bot.send_video(message.chat.id, video)
+        except Exception as retry_error:
+            logger.error(f"Retry failed: {retry_error}")
+            bot.reply_to(message, f"Error sending video: {retry_error}")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
