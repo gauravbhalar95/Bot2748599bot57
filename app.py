@@ -52,6 +52,20 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Get streaming URL using yt-dlp
+def get_streaming_url(url):
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
+
 # Download video using yt-dlp
 def download_video(url, start_time=None, end_time=None):
     ydl_opts = {
@@ -87,7 +101,7 @@ def upload_to_mega(file_path):
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download.")
+    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
 # Command: /meganz
 @bot.message_handler(commands=['meganz'])
@@ -107,7 +121,7 @@ def handle_mega_login(message):
     except Exception as e:
         bot.reply_to(message, f"Login failed: {str(e)}")
 
-# Handle video download and optional Mega.nz upload
+# Handle video download and streaming
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -115,19 +129,19 @@ def handle_message(message):
         bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "Downloading video, please wait...")
-    file_path = download_video(url)
+    bot.reply_to(message, "Processing your request, please wait...")
 
-    if not file_path:
-        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
+    # Get the streaming URL
+    streaming_url = get_streaming_url(url)
+    if not streaming_url:
+        bot.reply_to(message, "Error: Unable to fetch a streaming URL.")
         return
 
+    # Send streaming link
     try:
-        with open(file_path, 'rb') as video:
-            bot.send_video(message.chat.id, video)
-        os.remove(file_path)
+        bot.reply_to(message, f"Your video is ready for streaming:\n{streaming_url}")
     except Exception as e:
-        logger.error(f"Error sending video: {e}")
+        logger.error(f"Error sending streaming URL: {e}")
         bot.reply_to(message, f"Error: {e}")
 
 # Flask app for webhook
