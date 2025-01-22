@@ -56,7 +56,6 @@ def get_streaming_url(url):
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
-        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -70,7 +69,7 @@ def get_streaming_url(url):
 def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(uploader)s")}_%(id)s.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -78,30 +77,51 @@ def download_video(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info_dict)
-            return sanitize_filename(filename), info_dict.get('filesize', 0)
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
+        return None, 0
+
+# Download Instagram Story using yt-dlp with login cookies
+def download_instagram_story(url):
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+    except Exception as e:
+        logger.error(f"Error downloading Instagram story: {e}")
         return None, 0
 
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
+    bot.reply_to(message, "Welcome! Send me a video link to download, stream, or Instagram story link.")
 
 # Handle video download and optional streaming
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
+    
     if not is_valid_url(url):
         bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "Downloading video, please wait...")
-    file_path, file_size = download_video(url)
+    if 'instagram.com' in url and 'stories' in url:
+        bot.reply_to(message, "Downloading Instagram story, please wait...")
+        file_path, file_size = download_instagram_story(url)
+    else:
+        bot.reply_to(message, "Downloading video, please wait...")
+        file_path, file_size = download_video(url)
 
     if not file_path:
-        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
+        bot.reply_to(message, "Error: Download failed. Ensure the URL is correct.")
         return
 
     try:
@@ -111,7 +131,7 @@ def handle_message(message):
             if streaming_url:
                 bot.reply_to(
                     message,
-                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                    f"The file is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
                 )
             else:
                 bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
