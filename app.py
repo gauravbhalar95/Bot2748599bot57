@@ -32,7 +32,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 # Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
-    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com'
+    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
 # Mega client
