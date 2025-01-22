@@ -5,8 +5,6 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
-from mega import Mega
-import time
 import nest_asyncio
 
 # Apply the patch for nested event loops
@@ -35,9 +33,6 @@ SUPPORTED_DOMAINS = [
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
-# Mega client
-mega_client = None
-
 # Utility to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -51,19 +46,30 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Get streaming URL using yt-dlp
-def get_streaming_url(url):
+# Validate Instagram story URLs
+def is_instagram_story_url(url):
+    try:
+        result = urlparse(url)
+        return 'instagram.com/stories/' in result.path
+    except ValueError:
+        return False
+
+# Download Instagram story using yt-dlp
+def download_instagram_story(url):
     ydl_opts = {
-        'format': 'best',
-        'noplaylist': True,
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(uploader)s_%(upload_date)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get('url')
+            info_dict = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
     except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
-        return None
+        logger.error(f"Error downloading Instagram story: {e}")
+        return None, 0
 
 # Download video using yt-dlp
 def download_video(url):
@@ -85,9 +91,9 @@ def download_video(url):
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
+    bot.reply_to(message, "Welcome! Send me a video link or Instagram story link to download.")
 
-# Handle video download and optional streaming
+# Handle messages for video and Instagram story download
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -95,40 +101,33 @@ def handle_message(message):
         bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "Downloading video, please wait...")
-    file_path, file_size = download_video(url)
+    if is_instagram_story_url(url):
+        bot.reply_to(message, "Downloading Instagram story, please wait...")
+        file_path, file_size = download_instagram_story(url)
+    else:
+        bot.reply_to(message, "Downloading video, please wait...")
+        file_path, file_size = download_video(url)
 
     if not file_path:
-        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
+        bot.reply_to(message, "Error: Download failed. Ensure the URL is correct.")
         return
 
     try:
         # Check if the file size exceeds Telegram's limit (2GB)
         if file_size > 2 * 1024 * 1024 * 1024:  # 2GB in bytes
-            streaming_url = get_streaming_url(url)
-            if streaming_url:
-                bot.reply_to(
-                    message,
-                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
-                )
-            else:
-                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
-        else:
-            # Try sending the video
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-    except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        # If the video is too large, provide streaming link instead
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
             bot.reply_to(
                 message,
-                f"The video is too large to send directly on Telegram. Here is the streaming link:\n{streaming_url}"
+                f"The file is too large to send on Telegram. Try downloading it manually."
             )
         else:
-            bot.reply_to(message, f"Error: {e}")
+            # Send the downloaded file
+            with open(file_path, 'rb') as file:
+                bot.send_document(message.chat.id, file)
+    except Exception as e:
+        logger.error(f"Error sending file: {e}")
+        bot.reply_to(message, f"An error occurred: {e}")
     finally:
+        # Clean up the file
         if os.path.exists(file_path):
             os.remove(file_path)
 
