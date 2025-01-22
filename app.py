@@ -86,15 +86,22 @@ def download_video(url):
 def download_instagram_story(url):
     ydl_opts = {
         'format': 'best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',  # Ensure filename is sanitized
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
     }
     try:
+        # Ensure download directory exists
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+            filename = ydl.prepare_filename(info_dict)
+            
+            # Sanitize the final filename before returning
+            sanitized_filename = sanitize_filename(filename)
+            return sanitized_filename, info_dict.get('filesize', 0)
     except Exception as e:
         logger.error(f"Error downloading Instagram story: {e}")
         return None, 0
@@ -102,21 +109,22 @@ def download_instagram_story(url):
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download, stream, or Instagram story link.")
+    bot.reply_to(message, "Welcome! Send me a video or Instagram story link to download or stream.")
 
 # Handle video download and optional streaming
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
-    
     if not is_valid_url(url):
         bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    if 'instagram.com' in url and 'stories' in url:
+    if 'instagram.com' in url and 'story' in url:
+        # Instagram Story download
         bot.reply_to(message, "Downloading Instagram story, please wait...")
         file_path, file_size = download_instagram_story(url)
     else:
+        # Regular video download
         bot.reply_to(message, "Downloading video, please wait...")
         file_path, file_size = download_video(url)
 
@@ -131,7 +139,7 @@ def handle_message(message):
             if streaming_url:
                 bot.reply_to(
                     message,
-                    f"The file is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
                 )
             else:
                 bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
