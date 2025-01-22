@@ -56,6 +56,7 @@ def get_streaming_url(url):
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
