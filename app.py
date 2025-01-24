@@ -5,9 +5,10 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
+from mega import Mega
 import time
 import nest_asyncio
-import gc  # Garbage collection for cleaning up memory
+import gc  # Import garbage collection for memory cleanup
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
@@ -50,7 +51,10 @@ def is_valid_url(url):
 
 # Get streaming URL using yt-dlp
 def get_streaming_url(url):
-    ydl_opts = {'format': 'best', 'noplaylist': True}
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
@@ -67,8 +71,6 @@ def download_video(url):
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'quiet': True,  # Suppress logs
-        'nocheckcertificate': True,  # Avoid certificate issues
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -115,6 +117,7 @@ def handle_message(message):
                 bot.send_video(message.chat.id, video)
     except Exception as e:
         logger.error(f"Error sending video: {e}")
+        # If the video is too large, provide streaming link instead
         streaming_url = get_streaming_url(url)
         if streaming_url:
             bot.reply_to(
@@ -127,7 +130,8 @@ def handle_message(message):
         # Clean up the downloaded file and memory
         if os.path.exists(file_path):
             os.remove(file_path)
-        gc.collect()  # Trigger garbage collection
+        # Free up memory by triggering garbage collection
+        gc.collect()
 
 # Flask app for webhook
 app = Flask(__name__)
