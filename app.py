@@ -5,6 +5,7 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
+from mega import Mega
 import time
 import nest_asyncio
 
@@ -34,6 +35,9 @@ SUPPORTED_DOMAINS = [
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
+# Mega client
+mega_client = None
+
 # Utility to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -47,18 +51,29 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Download video in chunks to save memory
+# Get streaming URL using yt-dlp
+def get_streaming_url(url):
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
+
+# Download video using yt-dlp
 def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
-        'retries': 3,
-        'noplaylist': True,
-        'progress_hooks': [download_progress_hook],  # Attach progress hook
+        'retries': 5,
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -66,11 +81,6 @@ def download_video(url):
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
-
-# Progress hook to log download status
-def download_progress_hook(d):
-    if d['status'] == 'downloading':
-        logger.info(f"Downloaded {d['_percent_str']} of {d['_total_bytes_str']} at {d['_speed_str']}.")
 
 # Command: /start
 @bot.message_handler(commands=['start'])
@@ -95,19 +105,31 @@ def handle_message(message):
     try:
         # Check if the file size exceeds Telegram's limit (2GB)
         if file_size > 2 * 1024 * 1024 * 1024:  # 2GB in bytes
-            bot.reply_to(
-                message,
-                "The video is too large to send on Telegram. Please download it manually."
-            )
+            streaming_url = get_streaming_url(url)
+            if streaming_url:
+                bot.reply_to(
+                    message,
+                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                )
+            else:
+                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
         else:
             # Try sending the video
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
     except Exception as e:
         logger.error(f"Error sending video: {e}")
-        bot.reply_to(message, f"Error: {e}")
+        # If the video is too large, provide streaming link instead
+        streaming_url = get_streaming_url(url)
+        if streaming_url:
+            bot.reply_to(
+                message,
+                f"The video is too large to send directly on Telegram. Here is the streaming link:\n{streaming_url}"
+            )
+        else:
+            bot.reply_to(message, f"Error: {e}")
     finally:
-        if file_path and os.path.exists(file_path):
+        if os.path.exists(file_path):
             os.remove(file_path)
 
 # Flask app for webhook
