@@ -5,9 +5,9 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
-from mega import Mega
 import time
 import nest_asyncio
+import gc  # Garbage collection for cleaning up memory
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
@@ -35,9 +35,6 @@ SUPPORTED_DOMAINS = [
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
-# Mega client
-mega_client = None
-
 # Utility to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -53,10 +50,7 @@ def is_valid_url(url):
 
 # Get streaming URL using yt-dlp
 def get_streaming_url(url):
-    ydl_opts = {
-        'format': 'best',
-        'noplaylist': True,
-    }
+    ydl_opts = {'format': 'best', 'noplaylist': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
@@ -73,6 +67,8 @@ def download_video(url):
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
+        'quiet': True,  # Suppress logs
+        'nocheckcertificate': True,  # Avoid certificate issues
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -119,7 +115,6 @@ def handle_message(message):
                 bot.send_video(message.chat.id, video)
     except Exception as e:
         logger.error(f"Error sending video: {e}")
-        # If the video is too large, provide streaming link instead
         streaming_url = get_streaming_url(url)
         if streaming_url:
             bot.reply_to(
@@ -129,8 +124,10 @@ def handle_message(message):
         else:
             bot.reply_to(message, f"Error: {e}")
     finally:
+        # Clean up the downloaded file and memory
         if os.path.exists(file_path):
             os.remove(file_path)
+        gc.collect()  # Trigger garbage collection
 
 # Flask app for webhook
 app = Flask(__name__)
