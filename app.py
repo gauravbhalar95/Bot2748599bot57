@@ -5,13 +5,9 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
-from mega import Mega
-import time
-import nest_asyncio
+from threading import Thread
+import queue
 import gc  # Import garbage collection for memory cleanup
-
-# Apply the patch for nested event loops
-nest_asyncio.apply()
 
 # Environment variables
 API_TOKEN = os.getenv('BOT_TOKEN')  # Bot token
@@ -36,6 +32,9 @@ SUPPORTED_DOMAINS = [
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
+# Task queue
+task_queue = queue.Queue()
+
 # Utility to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -49,7 +48,26 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Get streaming URL using yt-dlp
+# Download video using yt-dlp
+def download_video(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get('filesize', 0)
+            return file_path, file_size
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
+
+# Fetch streaming URL
 def get_streaming_url(url):
     ydl_opts = {
         'format': 'best',
@@ -63,37 +81,8 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-# Download video using yt-dlp
-def download_video(url):
-    ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-        'socket_timeout': 10,
-        'retries': 5,
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
-    except Exception as e:
-        logger.error(f"Error downloading video: {e}")
-        return None, 0
-
-# Command: /start
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
-
-# Handle video download and optional streaming
-@bot.message_handler(func=lambda message: True, content_types=['text'])
-def handle_message(message):
-    url = message.text.strip()
-    if not is_valid_url(url):
-        bot.reply_to(message, "Invalid or unsupported URL.")
-        return
-
-    bot.reply_to(message, "Downloading video, please wait...")
+# Handle the actual download task
+def handle_download_task(url, message):
     file_path, file_size = download_video(url)
 
     if not file_path:
@@ -102,7 +91,7 @@ def handle_message(message):
 
     try:
         # Check if the file size exceeds Telegram's limit (2GB)
-        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB in bytes
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB
             streaming_url = get_streaming_url(url)
             if streaming_url:
                 bot.reply_to(
@@ -117,7 +106,6 @@ def handle_message(message):
                 bot.send_video(message.chat.id, video)
     except Exception as e:
         logger.error(f"Error sending video: {e}")
-        # If the video is too large, provide streaming link instead
         streaming_url = get_streaming_url(url)
         if streaming_url:
             bot.reply_to(
@@ -130,8 +118,37 @@ def handle_message(message):
         # Clean up the downloaded file and memory
         if os.path.exists(file_path):
             os.remove(file_path)
-        # Free up memory by triggering garbage collection
         gc.collect()
+
+# Worker function to process download tasks
+def worker():
+    while True:
+        task = task_queue.get()
+        if task is None:
+            break
+        url, message = task
+        handle_download_task(url, message)
+        task_queue.task_done()
+
+# Start worker threads
+for _ in range(4):  # Adjust the number of threads as needed
+    Thread(target=worker, daemon=True).start()
+
+# Command: /start
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
+
+# Handle video download
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_message(message):
+    url = message.text.strip()
+    if not is_valid_url(url):
+        bot.reply_to(message, "Invalid or unsupported URL.")
+        return
+
+    bot.reply_to(message, "Processing your request. Please wait...")
+    task_queue.put((url, message))
 
 # Flask app for webhook
 app = Flask(__name__)
