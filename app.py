@@ -9,6 +9,7 @@ from flask import Flask, request
 import telebot
 import yt_dlp
 import re
+import subprocess
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
@@ -62,6 +63,48 @@ def get_video_data(url):
         logger.error(f"Error fetching video data: {e}")
         return None, None, None
 
+# ──────────────────── 📸 SCREENSHOT GENERATOR ──────────────────── #
+
+def generate_screenshot(url, output_path):
+    """Generate a screenshot from the video URL using ffmpeg."""
+    ydl_opts = {'format': 'best', 'noplaylist': True, 'quiet': True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_url = info.get('url')
+
+            # Using ffmpeg to capture a screenshot at the 5-second mark
+            command = [
+                'ffmpeg', '-i', video_url, '-ss', '00:00:05',
+                '-vframes', '1', '-f', 'image2', output_path
+            ]
+            subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return output_path
+    except Exception as e:
+        logger.error(f"Error generating screenshot: {e}")
+        return None
+
+# ──────────────────── ✂️ 1-MINUTE TRIMMED VIDEO ──────────────────── #
+
+def generate_trimmed_video(url, output_path):
+    """Trim the first 1 minute of the video."""
+    ydl_opts = {'format': 'best', 'noplaylist': True, 'quiet': True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_url = info.get('url')
+
+            # Using ffmpeg to trim the video (first 1 minute)
+            command = [
+                'ffmpeg', '-i', video_url, '-t', '00:01:00',
+                '-c', 'copy', output_path
+            ]
+            subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return output_path
+    except Exception as e:
+        logger.error(f"Error trimming video: {e}")
+        return None
+
 # ──────────────────── 🔄 PROCESSING VIDEO REQUESTS ──────────────────── #
 
 def handle_video_task(url, message):
@@ -112,6 +155,40 @@ for _ in range(4):
 def start(message):
     """Welcome message for the bot."""
     bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online** or **Download**.")
+
+@bot.message_handler(commands=['screenshot'])
+def screenshot(message):
+    """Generate a screenshot from the provided URL."""
+    url = message.text.strip().split(' ')[1]  # Get the URL from the message
+    if not is_valid_url(url):
+        bot.reply_to(message, "❌ Invalid or unsupported URL.")
+        return
+    
+    bot.reply_to(message, "⏳ Generating screenshot...")
+    screenshot_path = '/tmp/screenshot.png'
+    result = generate_screenshot(url, screenshot_path)
+    if result:
+        with open(screenshot_path, 'rb') as photo:
+            bot.send_photo(message.chat.id, photo, caption="📸 Screenshot generated!")
+    else:
+        bot.reply_to(message, "❌ Error: Unable to generate screenshot.")
+
+@bot.message_handler(commands=['trimvideo'])
+def trim_video(message):
+    """Trim the first 1 minute of the video."""
+    url = message.text.strip().split(' ')[1]  # Get the URL from the message
+    if not is_valid_url(url):
+        bot.reply_to(message, "❌ Invalid or unsupported URL.")
+        return
+    
+    bot.reply_to(message, "⏳ Generating trimmed video...")
+    trimmed_video_path = '/tmp/trimmed_video.mp4'
+    result = generate_trimmed_video(url, trimmed_video_path)
+    if result:
+        with open(trimmed_video_path, 'rb') as video:
+            bot.send_video(message.chat.id, video, caption="🎬 1-Minute Trimmed Video")
+    else:
+        bot.reply_to(message, "❌ Error: Unable to trim the video.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
