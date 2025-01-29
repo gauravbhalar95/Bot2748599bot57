@@ -1,14 +1,13 @@
 import os
 import logging
 import queue
-import gc  # Garbage collection
+import gc
 from threading import Thread
 from urllib.parse import urlparse
-
+import subprocess  # For running ffmpeg commands
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
@@ -44,10 +43,6 @@ def is_valid_url(url):
 
 # ──────────────────── 🎥 FETCH VIDEO LINKS & THUMBNAIL ──────────────────── #
 
-def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.strip()[:max_length]
-
 def get_video_data(url):
     """
     Extract the **direct streaming URL**, **original download page**, and **large thumbnail**.
@@ -61,6 +56,34 @@ def get_video_data(url):
     except Exception as e:
         logger.error(f"Error fetching video data: {e}")
         return None, None, None
+
+# ──────────────────── 🎬 SCREENSHOT GENERATOR ──────────────────── #
+
+def generate_screenshot(video_url, output_filename="screenshot.png"):
+    """Generate a screenshot from the video at 30 seconds using ffmpeg."""
+    try:
+        command = [
+            'ffmpeg', '-ss', '00:00:30', '-i', video_url, '-vframes', '1', '-q:v', '2', output_filename
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return output_filename
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error generating screenshot: {e}")
+        return None
+
+# ──────────────────── ⏳ 1-MINUTE TRIMMED VIDEO ──────────────────── #
+
+def generate_trimmed_video(video_url, output_filename="trimmed_video.mp4"):
+    """Generate a 1-minute trimmed version of the video."""
+    try:
+        command = [
+            'ffmpeg', '-i', video_url, '-t', '00:01:00', '-c:v', 'libx264', '-c:a', 'aac', output_filename
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return output_filename
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error trimming video: {e}")
+        return None
 
 # ──────────────────── 🔄 PROCESSING VIDEO REQUESTS ──────────────────── #
 
@@ -82,13 +105,24 @@ def handle_video_task(url, message):
             parse_mode="HTML"
         )
     else:
-        # Keep Instagram, YouTube, etc., unchanged
-        bot.reply_to(
-            message,
-            f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
-            f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
-            parse_mode="HTML"
-        )
+        # Generate screenshot and send it
+        screenshot_filename = generate_screenshot(streaming_url)
+        if screenshot_filename:
+            bot.send_photo(
+                chat_id=message.chat.id,
+                photo=open(screenshot_filename, 'rb'),
+                caption=f"📸 Screenshot from video. Watch Online: <a href='{streaming_url}'>Click Here</a>",
+                parse_mode="HTML"
+            )
+
+        # Generate trimmed 1-minute video and send it
+        trimmed_filename = generate_trimmed_video(streaming_url)
+        if trimmed_filename:
+            bot.send_video(
+                chat_id=message.chat.id,
+                video=open(trimmed_filename, 'rb'),
+                caption="⏳ Here's a 1-minute trimmed version of the video.",
+            )
 
 # ──────────────────── ⚙️ BACKGROUND WORKER ──────────────────── #
 
@@ -111,7 +145,7 @@ for _ in range(4):
 @bot.message_handler(commands=['start'])
 def start(message):
     """Welcome message for the bot."""
-    bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online** or **Download**.")
+    bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online**, **Download**, or get a **Screenshot**.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
