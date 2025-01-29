@@ -39,35 +39,36 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Fetch streaming & download URLs
-def get_video_urls(url):
+# Fetch direct video file link
+def get_direct_video_link(url):
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
+        'quiet': True
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
-            streaming_url = info_dict.get('url')  # Direct streaming URL
-            download_url = info_dict.get('webpage_url')  # Original download link
-            return streaming_url, download_url
+            direct_video_url = info_dict.get('url')  # Direct file link
+            return direct_video_url
     except Exception as e:
-        logger.error(f"Error fetching URLs: {e}")
-        return None, None
+        logger.error(f"Error fetching direct video link: {e}")
+        return None
 
-# Handle the video task (Streaming + Download)
+# Handle the direct download task
 def handle_video_task(url, message):
-    streaming_url, download_url = get_video_urls(url)
+    direct_link = get_direct_video_link(url)
 
-    if not streaming_url or not download_url:
-        bot.reply_to(message, "❌ Error: Unable to fetch video links.")
+    if not direct_link:
+        bot.reply_to(message, "❌ Error: Unable to fetch the direct video link.")
         return
 
-    # Send both Watch & Download options
+    # Send the **Chrome-compatible direct download link**
     bot.reply_to(
         message,
-        f"🎥 **Watch Online**: <a href='{streaming_url}'>Click Here</a>\n"
-        f"💾 **Download Video**: <a href='{download_url}'>Click Here</a>",
+        f"🔽 **Click below to download directly**\n"
+        f"👉 <a href='{direct_link}'>Download Video</a>\n\n"
+        f"📌 *If the video doesn't download, long-press the link and select 'Download' in Chrome.*",
         parse_mode="HTML"
     )
 
@@ -82,15 +83,15 @@ def worker():
         task_queue.task_done()
 
 # Start worker threads
-for _ in range(4):  # Adjust the number of threads as needed
+for _ in range(4):  # Adjust as needed
     Thread(target=worker, daemon=True).start()
 
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online** or **Download**.")
+    bot.reply_to(message, "👋 Welcome! Send me a video link to **Download Directly in Chrome**.")
 
-# Handle video streaming & download requests
+# Handle video requests
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -98,7 +99,7 @@ def handle_message(message):
         bot.reply_to(message, "❌ Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "⏳ Fetching video links. Please wait...")
+    bot.reply_to(message, "⏳ Fetching direct download link. Please wait...")
     task_queue.put((url, message))
 
 # Flask app for webhook
