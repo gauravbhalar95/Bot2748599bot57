@@ -67,14 +67,23 @@ def handle_video_task(url, message):
         bot.reply_to(message, "❌ Error: Unable to fetch video details.")
         return
 
-    # Send the large thumbnail first
-    bot.send_photo(
-        chat_id=message.chat.id,
-        photo=thumbnail_url,  # High-resolution thumbnail
-        caption=f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
-                f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
-        parse_mode="HTML"
-    )
+    # If it's a video platform (Xvideos, Xnxx, etc.), show a large thumbnail
+    if any(domain in url for domain in ['xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']):
+        bot.send_photo(
+            chat_id=message.chat.id,
+            photo=thumbnail_url,  # High-resolution thumbnail
+            caption=f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
+                    f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
+            parse_mode="HTML"
+        )
+    else:
+        # Keep Instagram, YouTube, etc., unchanged
+        bot.reply_to(
+            message,
+            f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
+            f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
+            parse_mode="HTML"
+        )
 
 # ──────────────────── ⚙️ BACKGROUND WORKER ──────────────────── #
 
