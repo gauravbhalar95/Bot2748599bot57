@@ -1,7 +1,6 @@
 import os
 import logging
 import queue
-import re
 import gc  # Garbage collection
 from threading import Thread
 from urllib.parse import urlparse
@@ -12,7 +11,6 @@ import yt_dlp
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
-# Environment variables
 API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot API Token
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL for Flask
 PORT = int(os.getenv('PORT', 8080))  # Default Flask port
@@ -43,36 +41,38 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# ──────────────────── 🎥 FETCH VIDEO LINKS ──────────────────── #
+# ──────────────────── 🎥 FETCH VIDEO LINKS & THUMBNAIL ──────────────────── #
 
-def get_video_urls(url):
+def get_video_data(url):
     """
-    Extract the **direct streaming URL** and the **original download page**.
+    Extract the **direct streaming URL**, **original download page**, and **large thumbnail**.
     Uses yt-dlp to fetch metadata.
     """
     ydl_opts = {'format': 'best', 'noplaylist': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            return info.get('url'), info.get('webpage_url')  # (Streaming URL, Download Page)
+            return info.get('url'), info.get('webpage_url'), info.get('thumbnail')  # (Streaming URL, Download Page, Thumbnail)
     except Exception as e:
-        logger.error(f"Error fetching video URLs: {e}")
-        return None, None
+        logger.error(f"Error fetching video data: {e}")
+        return None, None, None
 
 # ──────────────────── 🔄 PROCESSING VIDEO REQUESTS ──────────────────── #
 
 def handle_video_task(url, message):
-    """Process a video request: fetch URLs & send them to the user."""
-    streaming_url, download_url = get_video_urls(url)
+    """Process a video request: fetch URLs, thumbnail & send response."""
+    streaming_url, download_url, thumbnail_url = get_video_data(url)
 
     if not streaming_url or not download_url:
-        bot.reply_to(message, "❌ Error: Unable to fetch video links.")
+        bot.reply_to(message, "❌ Error: Unable to fetch video details.")
         return
 
-    bot.reply_to(
-        message,
-        f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
-        f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
+    # Send the large thumbnail first
+    bot.send_photo(
+        chat_id=message.chat.id,
+        photo=thumbnail_url,  # High-resolution thumbnail
+        caption=f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
+                f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
         parse_mode="HTML"
     )
 
@@ -108,7 +108,7 @@ def handle_message(message):
         bot.reply_to(message, "❌ Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "⏳ Fetching video links. Please wait...")
+    bot.reply_to(message, "⏳ Fetching video details. Please wait...")
     task_queue.put((url, message))
 
 # ──────────────────── 🌐 FLASK SERVER ──────────────────── #
