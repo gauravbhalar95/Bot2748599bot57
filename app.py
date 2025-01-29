@@ -39,8 +39,8 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Fetch streaming URL
-def get_streaming_url(url):
+# Fetch streaming & download URLs
+def get_video_urls(url):
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
@@ -48,24 +48,26 @@ def get_streaming_url(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get('url')  # Returns the direct streaming URL
+            streaming_url = info_dict.get('url')  # Direct streaming URL
+            download_url = info_dict.get('webpage_url')  # Original download link
+            return streaming_url, download_url
     except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
-        return None
+        logger.error(f"Error fetching URLs: {e}")
+        return None, None
 
-# Handle the video task (Streaming only)
-def handle_streaming_task(url, message):
-    streaming_url = get_streaming_url(url)
+# Handle the video task (Streaming + Download)
+def handle_video_task(url, message):
+    streaming_url, download_url = get_video_urls(url)
 
-    if not streaming_url:
-        bot.reply_to(message, "❌ Error: Unable to fetch a streaming link for this video.")
+    if not streaming_url or not download_url:
+        bot.reply_to(message, "❌ Error: Unable to fetch video links.")
         return
 
-    # Provide a direct streaming link (clickable in Chrome)
+    # Send both Watch & Download options
     bot.reply_to(
         message,
-        f"✅ Click below to **watch the video** in Chrome:\n\n"
-        f"🎥 <a href='{streaming_url}'>**Watch Video**</a>",
+        f"🎥 **Watch Online**: <a href='{streaming_url}'>Click Here</a>\n"
+        f"💾 **Download Video**: <a href='{download_url}'>Click Here</a>",
         parse_mode="HTML"
     )
 
@@ -76,7 +78,7 @@ def worker():
         if task is None:
             break
         url, message = task
-        handle_streaming_task(url, message)
+        handle_video_task(url, message)
         task_queue.task_done()
 
 # Start worker threads
@@ -86,9 +88,9 @@ for _ in range(4):  # Adjust the number of threads as needed
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Welcome! Send me a video link to stream it online.")
+    bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online** or **Download**.")
 
-# Handle video streaming request
+# Handle video streaming & download requests
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -96,7 +98,7 @@ def handle_message(message):
         bot.reply_to(message, "❌ Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, "⏳ Processing your request. Please wait...")
+    bot.reply_to(message, "⏳ Fetching video links. Please wait...")
     task_queue.put((url, message))
 
 # Flask app for webhook
