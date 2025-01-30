@@ -69,7 +69,7 @@ def download_media(url, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path, info_dict.get('thumbnail', None)  # Return file path and thumbnail URL
+        return file_path
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
         raise
@@ -104,12 +104,8 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
-        # Download media and get thumbnail
-        file_path, thumbnail_url = download_media(url, start_time, end_time)
-
-        # Send the thumbnail if available
-        if thumbnail_url:
-            bot2.send_photo(message.chat.id, thumbnail_url)
+        # Download media
+        file_path = download_media(url, start_time, end_time)
 
         if upload_to_mega_flag:
             # Upload to Mega.nz
@@ -180,12 +176,8 @@ def handle_mega(message):
 
         bot2.reply_to(message, "Downloading the video, please wait...")
 
-        # Download media and get thumbnail
-        file_path, thumbnail_url = download_media(url)
-
-        # Send the thumbnail if available
-        if thumbnail_url:
-            bot2.send_photo(message.chat.id, thumbnail_url)
+        # Download media
+        file_path = download_media(url)
 
         # Handle Mega.nz upload
         if mega_client is None:
