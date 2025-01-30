@@ -81,7 +81,6 @@ def download_and_trim_video(url, start_time, end_time):
         'format': 'best[ext=mp4]/best',
         'outtmpl': 'video.%(ext)s',
         'retries': 5,
-        'noplaylist': True
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
