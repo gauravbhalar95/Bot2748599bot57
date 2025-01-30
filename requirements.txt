@@ -5,3 +5,4 @@ mega.py
 nest_asyncio
 gunicorn
 ffmpeg
+psutil
