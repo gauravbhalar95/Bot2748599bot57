@@ -1,54 +1,55 @@
 import os
 import logging
-import gc  # Memory cleanup
-import queue
 from flask import Flask, request
-from urllib.parse import urlparse
-from threading import Thread
 import telebot
 import yt_dlp
 import re
+from urllib.parse import urlparse
+from threading import Thread
+import queue
+import gc  # Garbage collection
 
-# ---------------------------[ Environment Variables ]---------------------------
-API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram bot token
+# Configurations
+BOT_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot Token
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL
-PORT = int(os.getenv('PORT', 8080))  # Default port
-COOKIES_FILE = 'cookies.txt'  # Cookies file for authenticated downloads
+PORT = int(os.getenv('PORT', 8080))  # Default Port
+COOKIES_FILE = 'cookies.txt'
 
-# ---------------------------[ Initialize Bot & Logging ]---------------------------
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
+# Initialize the bot
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
 
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------------------------[ Directories & Constants ]---------------------------
+# Download directory
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
-task_queue = queue.Queue()  # Queue for handling multiple downloads
+# Task queue for multi-threading
+task_queue = queue.Queue()
 
-# ---------------------------[ Utility Functions ]---------------------------
+# Sanitize filename to prevent errors
 def sanitize_filename(filename, max_length=250):
-    """Sanitize filenames to prevent illegal characters."""
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
+# Validate URL
 def is_valid_url(url):
-    """Check if the given URL is valid and supported."""
     try:
         result = urlparse(url)
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
 
-# ---------------------------[ Download & Streaming Functions ]---------------------------
+# Download video using yt-dlp
 def download_video(url):
-    """Download video using yt-dlp and return file path & size."""
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
@@ -63,92 +64,82 @@ def download_video(url):
             file_size = info_dict.get('filesize', 0)
             return file_path, file_size
     except Exception as e:
-        logger.error(f"Error downloading video: {e}")
+        logger.error(f"Download Error: {e}")
         return None, 0
 
+# Get streaming link
 def get_streaming_url(url):
-    """Fetch streaming URL for the given video."""
-    ydl_opts = {'format': 'best', 'noplaylist': True}
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL({'format': 'best', 'noplaylist': True}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             return info_dict.get('url')
     except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
+        logger.error(f"Streaming Link Error: {e}")
         return None
 
-# ---------------------------[ Task Handling ]---------------------------
-def handle_download_task(url, message):
-    """Process the video download task and send response to user."""
+# Process video download
+def process_download(url, message):
     file_path, file_size = download_video(url)
 
     if not file_path:
-        bot.reply_to(message, "❌ Error: Video download failed. Please check the URL.")
+        bot.reply_to(message, "❌ Download failed. Invalid URL or restricted video.")
         return
 
     try:
-        if file_size > 2 * 1024 * 1024 * 1024:  # If file size exceeds 2GB
+        # If file is larger than 2GB, send streaming and direct link
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB
             streaming_url = get_streaming_url(url)
             if streaming_url:
                 bot.reply_to(
                     message,
-                    f"⚠️ The video is too large to send on Telegram.\n\n"
-                    f"🎥 **Streaming Link:** [Click Here]({streaming_url})\n"
-                    f"⬇️ **Download Link:** [Click Here]({url})",
+                    f"⚠️ Video too large to send on Telegram.\n\n"
+                    f"🎥 **Stream:** [Click Here]({streaming_url})\n"
+                    f"⬇️ **Download:** [Click Here]({url})",
                     parse_mode="Markdown"
                 )
             else:
-                bot.reply_to(message, "❌ Unable to fetch a streaming link. Try downloading manually.")
+                bot.reply_to(message, "❌ Unable to fetch streaming link. Try downloading manually.")
         else:
+            # Send video directly
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-    except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            bot.reply_to(
-                message,
-                f"⚠️ The video is too large to send directly on Telegram.\n\n"
-                f"🎥 **Streaming Link:** [Click Here]({streaming_url})",
-                parse_mode="Markdown"
-            )
-        else:
-            bot.reply_to(message, f"❌ Error: {e}")
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)  # Delete downloaded file
-        gc.collect()  # Free memory
 
-# ---------------------------[ Worker Thread ]---------------------------
+    except Exception as e:
+        logger.error(f"Sending Error: {e}")
+        bot.reply_to(message, f"❌ Error: {e}")
+    finally:
+        # Cleanup
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        gc.collect()
+
+# Worker function for multi-threading
 def worker():
-    """Worker thread to process download tasks from the queue."""
     while True:
         task = task_queue.get()
         if task is None:
             break
         url, message = task
-        handle_download_task(url, message)
+        process_download(url, message)
         task_queue.task_done()
 
 # Start worker threads
-for _ in range(4):  # Adjust as needed
+for _ in range(4):  # Adjust number of threads as needed
     Thread(target=worker, daemon=True).start()
 
-# ---------------------------[ Telegram Bot Handlers ]---------------------------
+# Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    """Handle /start command."""
     bot.reply_to(
         message,
         "👋 Welcome! Send me a video link to download or stream.\n\n"
-        "🎥 **Supported Platforms:**\n"
-        "✔️ YouTube\n✔️ Instagram\n✔️ Facebook\n✔️ Twitter (X)\n✔️ Adult sites\n\n"
-        "⚠️ If the file is larger than **2GB**, I will provide a **streaming link** instead."
+        "🎥 **Supported platforms:** YouTube, Instagram, Facebook, X (Twitter), and adult sites.\n\n"
+        "⚠️ If the file is larger than 2GB, I'll provide a streaming and download link."
     )
 
+# Handle messages (video download requests)
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
-    """Handle text messages containing video URLs."""
     url = message.text.strip()
     if not is_valid_url(url):
         bot.reply_to(message, "❌ Invalid or unsupported URL.")
@@ -157,22 +148,19 @@ def handle_message(message):
     bot.reply_to(message, "⏳ Processing your request. Please wait...")
     task_queue.put((url, message))
 
-# ---------------------------[ Flask Webhook Server ]---------------------------
+# Flask app for webhook
 app = Flask(__name__)
 
-@app.route('/' + API_TOKEN, methods=['POST'])
+@app.route('/' + BOT_TOKEN, methods=['POST'])
 def webhook():
-    """Process webhook requests from Telegram."""
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "OK", 200
 
 @app.route('/')
 def set_webhook():
-    """Set webhook for Telegram bot."""
     bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    bot.set_webhook(url=WEBHOOK_URL + '/' + BOT_TOKEN, timeout=60)
     return "Webhook set", 200
 
-# ---------------------------[ Run Flask Server ]---------------------------
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT)
