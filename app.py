@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from flask import Flask, request
 import telebot
 import yt_dlp
-import ffmpeg  
+import ffmpeg
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
@@ -98,7 +98,7 @@ def trim_video(input_file, output_file, start_time, end_time):
 
 def handle_video_task(url, message, start_time=None, end_time=None):
     """Process a video request: Download, Trim (optional), and Send."""
-    
+
     if "twitter.com" in url or "x.com" in url:
         file_path = download_twitter_video(url)
     else:
