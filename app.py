@@ -1,6 +1,6 @@
 import os
 import logging
-import psutil  # To monitor memory usage
+import psutil
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -83,7 +83,7 @@ def handle_request(url, message):
             file_path = ydl.prepare_filename(info_dict)
             file_size = info_dict.get('filesize', 0)
 
-        if file_size > 2 * 1024 * 1024 * 1024:
+        if file_size > 2 * 1024 * 1024 * 1024:  # Check if file size is over 2GB
             streaming_url = get_streaming_url(url)
             bot.reply_to(
                 message,
@@ -95,63 +95,46 @@ def handle_request(url, message):
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-        
+
         os.remove(file_path)
         gc.collect()
-    
+
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         streaming_url = get_streaming_url(url)
         bot.reply_to(
             message,
-            f"⚠️ **Could not process video. Try streaming instead:**\n"
-            f"🎥 **[Stream Here]({streaming_url})**",
+            f"⚠️ **Something went wrong.**\n\n"
+            f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
+            f"⬇️ **Download Here:** [Click Here]({url})",
             parse_mode="Markdown"
         )
 
-# Worker thread to handle tasks
-def worker():
-    while True:
-        task = task_queue.get()
-        if task is None:
-            break
-        url, message = task
-        handle_request(url, message)
-        task_queue.task_done()
 
-# Start worker threads
-for _ in range(4):
-    Thread(target=worker, daemon=True).start()
-
-# Command: /start
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "👋 **Welcome!**\nSend a video link to **download or stream**.")
-
-# Handle video download requests
 @bot.message_handler(func=lambda message: True, content_types=['text'])
-def handle_message(message):
+def handle_text_message(message):
     url = message.text.strip()
-    if not is_valid_url(url):
-        bot.reply_to(message, "❌ **Invalid or unsupported URL.**")
-        return
+    if is_valid_url(url):
+        handle_request(url, message)
+    else:
+        bot.reply_to(message, "Please provide a valid URL to download the video.")
 
-    bot.reply_to(message, "⏳ **Processing your request...** Please wait.")
-    task_queue.put((url, message))
 
 # Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
-def webhook():
+def bot_webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    return "!", 200
+
 
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "✅ Webhook set", 200
+    return "Webhook set", 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=PORT, debug=True)
