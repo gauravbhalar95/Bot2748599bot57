@@ -7,8 +7,15 @@ WORKDIR /app
 # Copy the requirements file into the container
 COPY requirements.txt /app/requirements.txt
 
+# Install system dependencies (e.g., ffmpeg)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install any necessary dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
+
 
 # Copy the rest of the application code into the container
 COPY . /app
