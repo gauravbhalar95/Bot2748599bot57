@@ -3,6 +3,7 @@ import logging
 import queue
 import gc
 import re
+import requests
 from threading import Thread
 from urllib.parse import urlparse
 from flask import Flask, request
@@ -12,27 +13,23 @@ import ffmpeg
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
-API_TOKEN = os.getenv('BOT_TOKEN')  
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  
-PORT = int(os.getenv('PORT', 8080))  
+API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot API Token
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL for Flask
+PORT = int(os.getenv('PORT', 8080))  # Default Flask port
 COOKIES_FILE = 'cookies.txt'
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Supported video platforms
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
 
-# Task queue
 task_queue = queue.Queue()
 
 # ──────────────────── 🔗 URL VALIDATION ──────────────────── #
@@ -47,16 +44,18 @@ def is_valid_url(url):
 # ──────────────────── 🎥 VIDEO DOWNLOAD & TRIM ──────────────────── #
 
 def sanitize_filename(filename, max_length=250):
-    return re.sub(r'[\\/*?:"<>|]', "", filename.strip()[:max_length])
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
 
 def download_video(url):
+    """Download video from YouTube, Twitter, or other sources."""
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'merge_output_format': 'mp4',
         'socket_timeout': 10,
         'retries': 5,
-        'postprocessors': [{'key': 'FFmpegMetadata'}],  
+        'quiet': False
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -67,7 +66,22 @@ def download_video(url):
         logger.error(f"Error downloading video: {e}")
         return None, 0
 
+def download_twitter_video(url):
+    """Download Twitter video."""
+    try:
+        response = requests.get(url, stream=True)
+        filename = f"{DOWNLOAD_DIR}/twitter_video.mp4"
+        with open(filename, "wb") as video_file:
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:
+                    video_file.write(chunk)
+        return filename
+    except Exception as e:
+        logger.error(f"Error downloading Twitter video: {e}")
+        return None
+
 def trim_video(input_file, output_file, start_time, end_time):
+    """Trim a video between start_time and end_time using FFmpeg."""
     try:
         (
             ffmpeg
@@ -83,20 +97,27 @@ def trim_video(input_file, output_file, start_time, end_time):
 # ──────────────────── 🔄 PROCESSING VIDEO REQUESTS ──────────────────── #
 
 def handle_video_task(url, message, start_time=None, end_time=None):
-    file_path, file_size = download_video(url)
+    """Process a video request: Download, Trim (optional), and Send."""
+    
+    if "twitter.com" in url or "x.com" in url:
+        file_path = download_twitter_video(url)
+    else:
+        file_path, file_size = download_video(url)
 
     if not file_path:
         bot.reply_to(message, "❌ Error: Unable to download the video.")
         return
 
     try:
+        # If trimming is requested
         if start_time and end_time:
             trimmed_file = f"{DOWNLOAD_DIR}/trimmed_{os.path.basename(file_path)}"
             trimmed_file = trim_video(file_path, trimmed_file, start_time, end_time)
             if trimmed_file:
                 file_path = trimmed_file
 
-        if file_size > 50 * 1024 * 1024:
+        # Check Telegram file size limit (50MB for bots, 2GB for premium users)
+        if os.path.getsize(file_path) > 50 * 1024 * 1024:
             bot.reply_to(message, "⚠️ The file is too large for Telegram. Try trimming it first.")
         else:
             with open(file_path, 'rb') as video:
@@ -114,6 +135,7 @@ def handle_video_task(url, message, start_time=None, end_time=None):
 # ──────────────────── ⚙️ BACKGROUND WORKER ──────────────────── #
 
 def worker():
+    """Worker thread that processes queued video tasks."""
     while True:
         task = task_queue.get()
         if task is None:
@@ -132,7 +154,7 @@ def start(message):
     bot.reply_to(
         message,
         "👋 Welcome! Send me a video link to **Download or Trim**.\n\n"
-        "To trim a video, use:\n"
+        "To trim a video, use the format:\n"
         "<code>/trim &lt;URL&gt; &lt;start_time&gt; &lt;end_time&gt;</code>\n"
         "Example: <code>/trim https://youtu.be/example 00:01:30 00:03:00</code>",
         parse_mode="HTML"
@@ -143,7 +165,7 @@ def trim_command(message):
     try:
         args = message.text.split()
         if len(args) != 4:
-            bot.reply_to(message, "⚠️ Usage: /trim <URL> <start_time> <end_time>")
+            bot.reply_to(message, "⚠️ Usage: /trim <URL> <start_time> <end_time>\nExample: /trim https://youtu.be/example 00:00:30 00:01:30")
             return
 
         url, start_time, end_time = args[1], args[2], args[3]
