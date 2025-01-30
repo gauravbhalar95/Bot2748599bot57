@@ -1,5 +1,6 @@
 import os
 import logging
+import psutil  # To monitor memory usage
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -20,10 +21,6 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Directories
-DOWNLOAD_DIR = 'downloads'
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
 # Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
@@ -33,13 +30,18 @@ SUPPORTED_DOMAINS = [
 # Task queue for multi-threading
 task_queue = queue.Queue()
 
-# Validate URL
+# Check if URL is valid
 def is_valid_url(url):
     try:
         result = urlparse(url)
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
+
+# Check current memory usage
+def is_memory_high(threshold=80):
+    memory_usage = psutil.virtual_memory().percent
+    return memory_usage > threshold
 
 # Fetch streaming URL without downloading
 def get_streaming_url(url):
@@ -52,76 +54,72 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-# Download video using yt-dlp
-def download_video(url):
+# Process video request
+def handle_request(url, message):
+    if is_memory_high():
+        streaming_url = get_streaming_url(url)
+        if streaming_url:
+            bot.reply_to(
+                message,
+                f"⚠️ **Memory usage is too high.**\n\n"
+                f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
+                f"⬇️ **Download Here:** [Click Here]({url})",
+                parse_mode="Markdown"
+            )
+        else:
+            bot.reply_to(message, f"⚠️ **High memory usage detected. Try downloading manually:** [Download Here]({url})")
+        return
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
+        'outtmpl': 'video.%(ext)s',
         'retries': 5,
         'noplaylist': True
     }
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
             file_size = info_dict.get('filesize', 0)
-            return file_path, file_size
-    except Exception as e:
-        logger.error(f"Error downloading video: {e}")
-        return None, 0
 
-# Process video download task
-def handle_download_task(url, message):
-    file_path, file_size = download_video(url)
-
-    if not file_path:
-        bot.reply_to(message, "❌ **Error:** Video download failed. Check the URL.")
-        return
-
-    try:
-        if file_size > 2 * 1024 * 1024 * 1024:  # If file > 2GB, provide links
+        if file_size > 2 * 1024 * 1024 * 1024:
             streaming_url = get_streaming_url(url)
-            download_url = url  # Original link for direct download
-
-            if streaming_url:
-                bot.reply_to(
-                    message,
-                    f"⚠️ **Video is too large to send directly.**\n\n"
-                    f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
-                    f"⬇️ **Download Here:** [Click Here]({download_url})",
-                    parse_mode="Markdown"
-                )
-            else:
-                bot.reply_to(message, f"⚠️ **File too large. Try downloading manually:** [Download Here]({download_url})")
+            bot.reply_to(
+                message,
+                f"⚠️ **Video is too large.**\n\n"
+                f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
+                f"⬇️ **Download Here:** [Click Here]({url})",
+                parse_mode="Markdown"
+            )
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-    except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            bot.reply_to(
-                message,
-                f"⚠️ **Could not send the file. You can stream it here:**\n"
-                f"🎥 **[Stream Here]({streaming_url})**",
-                parse_mode="Markdown"
-            )
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        
+        os.remove(file_path)
         gc.collect()
+    
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        streaming_url = get_streaming_url(url)
+        bot.reply_to(
+            message,
+            f"⚠️ **Could not process video. Try streaming instead:**\n"
+            f"🎥 **[Stream Here]({streaming_url})**",
+            parse_mode="Markdown"
+        )
 
-# Worker function for processing downloads
+# Worker thread to handle tasks
 def worker():
     while True:
         task = task_queue.get()
         if task is None:
             break
         url, message = task
-        handle_download_task(url, message)
+        handle_request(url, message)
         task_queue.task_done()
 
-# Start worker threads (for fast processing)
+# Start worker threads
 for _ in range(4):
     Thread(target=worker, daemon=True).start()
 
