@@ -4,3 +4,4 @@ yt-dlp
 mega.py
 nest_asyncio
 gunicorn
+ffmpeg
