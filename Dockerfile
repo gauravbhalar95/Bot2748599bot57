@@ -13,9 +13,11 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install any necessary dependencies
+# Install necessary Python dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+# Ensure yt-dlp is always up-to-date
+RUN pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy the rest of the application code into the container
 COPY . /app
