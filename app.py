@@ -19,6 +19,14 @@ PORT = int(os.getenv('PORT', 8080))
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
 
+# Directories
+output_dir = 'downloads/'
+cookies_file = 'cookies.txt'
+
+# Ensure downloads directory exists
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -74,6 +82,9 @@ def download_and_trim_video(url, start_time, end_time):
         'outtmpl': 'video.%(ext)s',
         'retries': 5,
         'noplaylist': True
+        'cookiefile': cookies_file,
+        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'socket_timeout': 10,
     }
 
     try:
