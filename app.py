@@ -3,17 +3,15 @@ import logging
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re
 from urllib.parse import urlparse
 from threading import Thread
 import queue
 import gc
 
 # Environment variables
-API_TOKEN = os.getenv('BOT_TOKEN')  # Bot token from environment
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL
-PORT = int(os.getenv('PORT', 8080))  # Default to 8080
-COOKIES_FILE = 'cookies.txt'
+API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot Token
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL for hosting
+PORT = int(os.getenv('PORT', 8080))  # Default port
 
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
@@ -35,12 +33,7 @@ SUPPORTED_DOMAINS = [
 # Task queue for multi-threading
 task_queue = queue.Queue()
 
-# Sanitize filenames
-def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.strip()[:max_length]
-
-# Validate URLs
+# Validate URL
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -48,14 +41,24 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Fetch streaming URL without downloading
+def get_streaming_url(url):
+    ydl_opts = {'format': 'best', 'noplaylist': True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
+
 # Download video using yt-dlp
 def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-        'socket_timeout': 10,
+        'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
         'retries': 5,
+        'noplaylist': True
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -67,41 +70,29 @@ def download_video(url):
         logger.error(f"Error downloading video: {e}")
         return None, 0
 
-# Fetch streaming URL
-def get_streaming_url(url):
-    ydl_opts = {
-        'format': 'best',
-        'noplaylist': True,
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get('url')
-    except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
-        return None
-
-# Handle video download task
+# Process video download task
 def handle_download_task(url, message):
     file_path, file_size = download_video(url)
 
     if not file_path:
-        bot.reply_to(message, "❌ **Error:** Video download failed. Ensure the URL is correct.")
+        bot.reply_to(message, "❌ **Error:** Video download failed. Check the URL.")
         return
 
     try:
-        if file_size > 2 * 1024 * 1024 * 1024:  # If file is larger than 2GB
+        if file_size > 2 * 1024 * 1024 * 1024:  # If file > 2GB, provide links
             streaming_url = get_streaming_url(url)
+            download_url = url  # Original link for direct download
+
             if streaming_url:
                 bot.reply_to(
                     message,
-                    f"⚠️ **Video too large to send on Telegram.**\n\n"
+                    f"⚠️ **Video is too large to send directly.**\n\n"
                     f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
-                    f"⬇️ **Download Here:** [Click Here]({url})",
+                    f"⬇️ **Download Here:** [Click Here]({download_url})",
                     parse_mode="Markdown"
                 )
             else:
-                bot.reply_to(message, "❌ Unable to fetch streaming link. Try downloading manually.")
+                bot.reply_to(message, f"⚠️ **File too large. Try downloading manually:** [Download Here]({download_url})")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
@@ -111,12 +102,10 @@ def handle_download_task(url, message):
         if streaming_url:
             bot.reply_to(
                 message,
-                f"⚠️ **Video too large to send directly on Telegram.**\n"
-                f"🎥 **Stream Here:** [Click Here]({streaming_url})",
+                f"⚠️ **Could not send the file. You can stream it here:**\n"
+                f"🎥 **[Stream Here]({streaming_url})**",
                 parse_mode="Markdown"
             )
-        else:
-            bot.reply_to(message, f"❌ **Error:** {e}")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -132,16 +121,16 @@ def worker():
         handle_download_task(url, message)
         task_queue.task_done()
 
-# Start worker threads (adjust thread count for speed optimization)
+# Start worker threads (for fast processing)
 for _ in range(4):
     Thread(target=worker, daemon=True).start()
 
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 **Welcome!**\nSend me a video link to **download** or **stream**.")
+    bot.reply_to(message, "👋 **Welcome!**\nSend a video link to **download or stream**.")
 
-# Handle video downloads
+# Handle video download requests
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
