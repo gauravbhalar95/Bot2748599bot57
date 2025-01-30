@@ -31,7 +31,7 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Supported domains
+# Supported domains (including adult sites as requested)
 SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com',
                      'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']
 
@@ -75,7 +75,7 @@ def get_video_info(url):
 # Download and trim video
 def download_and_trim_video(url, start_time, end_time):
     output_filename = "video.mp4"
-    
+
     # Download video using yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -112,7 +112,7 @@ def download_and_trim_video(url, start_time, end_time):
 # Process video request
 def handle_request(url, message, start_time, end_time):
     video_info = get_video_info(url)
-    
+
     if video_info and video_info["thumbnail"]:
         bot.send_photo(
             message.chat.id, 
@@ -124,7 +124,7 @@ def handle_request(url, message, start_time, end_time):
         bot.reply_to(message, "⏳ **Processing your request...** Please wait.")
 
     video_file = download_and_trim_video(url, start_time, end_time)
-    
+
     if video_file:
         with open(video_file, 'rb') as video:
             bot.send_video(message.chat.id, video)
@@ -161,7 +161,7 @@ def start(message):
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     text = message.text.strip()
-    
+
     if not is_valid_url(text):
         bot.reply_to(message, "❌ **Invalid or unsupported URL.**")
         return
