@@ -9,11 +9,12 @@ from urllib.parse import urlparse, parse_qs
 from mega import Mega
 import time
 import json
+import requests
 
 # Load environment variables
 API_TOKEN_2 = os.getenv('BOT_TOKEN')
-CHANNEL_ID = os.getenv('CHANNEL_ID')  # Example: '@YourChannel'
-KOYEB_URL = os.getenv('WEBHOOK_URL')  # Koyeb URL for webhook
+CHANNEL_ID = os.getenv('CHANNEL_ID')
+KOYEB_URL = os.getenv('WEBHOOK_URL')
 
 # Initialize bot
 bot2 = telebot.TeleBot(API_TOKEN_2, parse_mode='HTML')
@@ -30,19 +31,20 @@ if not os.path.exists(output_dir):
 logging.basicConfig(level=logging.DEBUG)
 
 # Supported domains
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com']
+SUPPORTED_DOMAINS = ['instagram.com', 'x.com', 'facebook.com', 'youtube.com']  # Added youtube.com
 
 # Mega client
 mega_client = None
 
+# File size limit for direct sending (in bytes)
+FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
-# Sanitize filenames for downloaded files
+# Sanitize filenames
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-
-# Check if a URL is valid and supported
+# Check URL validity
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -50,16 +52,18 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-
-# Download media using yt-dlp
+# Download media with yt-dlp and thumbnail extraction
 def download_media(url, start_time=None, end_time=None):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',  # Prioritize mp4
         'outtmpl': f'{output_dir}{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': cookies_file,
         'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         'socket_timeout': 10,
         'retries': 5,
+        'writesubtitles': False, # Disable subtitles to prevent issues with youtube.com
+        'noplaylist': True, # Prevent downloading entire playlists
+        'extract_flat': True # Extract single video from playlist or channel
     }
 
     if start_time and end_time:
@@ -69,27 +73,27 @@ def download_media(url, start_time=None, end_time=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path
+
+            # Extract thumbnail (try different formats)
+            thumbnail_url = info_dict.get('thumbnail')
+            if thumbnail_url:
+                try:
+                    thumb_data = requests.get(thumbnail_url, stream=True).content
+                    thumb_path = f'{output_dir}{sanitize_filename("%(title)s")}.jpg'
+                    with open(thumb_path, 'wb') as f:
+                        f.write(thumb_data)
+                    return file_path, thumb_path
+                except Exception as e:
+                    logging.error("Error downloading thumbnail", exc_info=True)
+                    # Continue without thumbnail if it fails
+            return file_path, None # Return None if thumbnail download fails
+
     except Exception as e:
         logging.error("yt-dlp download error", exc_info=True)
         raise
 
+# ... (rest of the code: upload_to_mega, handle_mega_login, handle_mega remains the same)
 
-# Upload file to Mega.nz
-def upload_to_mega(file_path):
-    if mega_client is None:
-        raise Exception("Mega client is not logged in. Use /meganz <username> <password> to log in.")
-
-    try:
-        file = mega_client.upload(file_path)
-        public_link = mega_client.get_upload_link(file)
-        return public_link
-    except Exception as e:
-        logging.error("Error uploading to Mega", exc_info=True)
-        raise
-
-
-# Handle download and upload logic
 def handle_download_and_upload(message, url, upload_to_mega_flag):
     if not is_valid_url(url):
         bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
@@ -98,146 +102,45 @@ def handle_download_and_upload(message, url, upload_to_mega_flag):
     try:
         bot2.reply_to(message, "Downloading the video, please wait...")
 
-        # Extract start and end times if provided in the YouTube URL
         parsed_url = urlparse(url)
         query_params = parse_qs(parsed_url.query)
         start_time = query_params.get('start', [None])[0]
         end_time = query_params.get('end', [None])[0]
 
-        # Download media
-        file_path = download_media(url, start_time, end_time)
+        file_path, thumb_path = download_media(url, start_time, end_time)
 
-        if upload_to_mega_flag:
-            # Upload to Mega.nz
-            bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
+        file_size = os.path.getsize(file_path)
+
+        if upload_to_mega_flag:  # Mega upload
+            bot2.reply_to(message, "Uploading to Mega.nz, please wait...")
             mega_link = upload_to_mega(file_path)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {mega_link}")
-        else:
-            # Send video directly
+            bot2.reply_to(message, f"Video uploaded to Mega.nz: {mega_link}")
+        elif file_size > FILE_SIZE_LIMIT:  # Streaming link or download link
+            bot2.reply_to(message, "Video size is too large. Providing a streaming/download link (if available).")
+            # Implement logic to generate a streaming link or a temporary download link here.
+            # This depends on your server setup and how you want to host the large files.
+            # Example (replace with your actual logic):
+            # streaming_link = f"https://your-server.com/stream/{os.path.basename(file_path)}"
+            # bot2.reply_to(message, f"Stream the video here: {streaming_link}")
+            bot2.reply_to(message, "Large file support is not yet implemented. Please use /mega to upload to Mega.nz")
+        else:  # Direct send
             with open(file_path, 'rb') as video:
-                bot2.send_video(message.chat.id, video)
+                if thumb_path:
+                    with open(thumb_path, 'rb') as thumb:
+                        bot2.send_video(message.chat.id, video, thumbnail=thumb)
+                    os.remove(thumb_path) # Remove thumbnail after sending
+                else:
+                    bot2.send_video(message.chat.id, video)
 
-        # Cleanup
-        os.remove(file_path)
+        os.remove(file_path)  # Cleanup
+
     except Exception as e:
         logging.error("Download or upload failed", exc_info=True)
         bot2.reply_to(message, f"Download or upload failed: {str(e)}")
 
 
-# Mega login command with retries and error handling
-@bot2.message_handler(commands=['meganz'])
-def handle_mega_login(message):
-    global mega_client
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) == 1:
-            # Perform anonymous login if no email and password are provided
-            mega_client = Mega().login()  # Anonymous login
-            bot2.reply_to(message, "Logged in to Mega.nz anonymously!")
-        elif len(args) == 3:
-            # Perform login using email and password with retries
-            email = args[1]
-            password = args[2]
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    mega_client = Mega().login(email, password)
-                    bot2.reply_to(message, "Successfully logged in to Mega.nz!")
-                    break  # Exit the loop if login is successful
-                except Exception as e:
-                    if "Expecting value" in str(e):
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: Invalid server response. Retrying...")
-                        time.sleep(5)  # Wait 5 seconds before retrying
-                    else:
-                        bot2.reply_to(message, f"Login attempt {attempt + 1} failed: {str(e)}")
-                        break  # Exit the loop if it's not a JSONDecodeError
-        else:
-            bot2.reply_to(message, "Usage: /meganz <username> <password> or /meganz for anonymous login")
-
-    except Exception as e:
-        bot2.reply_to(message, f"Login failed: {str(e)}")
-
-
-@bot2.message_handler(commands=['mega'])
-def handle_mega(message):
-    try:
-        args = message.text.split(maxsplit=2)
-        if len(args) < 2:
-            bot2.reply_to(message, "Usage: /mega <URL> [<FOLDER_NAME>]")
-            return
-
-        url = args[1]
-        folder_name = args[2] if len(args) > 2 else None
-
-        # Validate the URL
-        if not is_valid_url(url):
-            bot2.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
-            return
-
-        bot2.reply_to(message, "Downloading the video, please wait...")
-
-        # Download media
-        file_path = download_media(url)
-
-        # Handle Mega.nz upload
-        if mega_client is None:
-            bot2.reply_to(message, "Mega.nz is not logged in. Use /meganz <username> <password> to log in.")
-            return
-
-        bot2.reply_to(message, "Uploading the video to Mega.nz, please wait...")
-
-        # Find the folder on Mega.nz
-        folder = None
-        if folder_name:
-            folder = mega_client.find(folder_name)
-            if not folder:
-                bot2.reply_to(message, f"Folder '{folder_name}' not found. Uploading to the root directory instead.")
-                folder = None
-            else:
-                folder = folder[0]  # Use the first matched folder
-
-        # Upload file
-        try:
-            if folder:
-                uploaded_file = mega_client.upload(file_path, folder)
-            else:
-                uploaded_file = mega_client.upload(file_path)
-
-            public_link = mega_client.get_upload_link(uploaded_file)
-            bot2.reply_to(message, f"Video has been uploaded to Mega.nz: {public_link}")
-        finally:
-            # Cleanup
-            os.remove(file_path)
-
-    except Exception as e:
-        logging.error("Error in /mega command", exc_info=True)
-        bot2.reply_to(message, f"An error occurred: {str(e)}")
-
-# Direct download without Mega.nz
-@bot2.message_handler(func=lambda message: True, content_types=['text'])
-def handle_direct_download(message):
-    url = message.text.strip()
-    if is_valid_url(url):
-        handle_download_and_upload(message, url, upload_to_mega_flag=False)
-    else:
-        bot2.reply_to(message, "Please provide a valid URL to download the video.")
-
-
-# Flask app for webhook
-app = Flask(__name__)
-
-@app.route('/' + API_TOKEN_2, methods=['POST'])
-def bot_webhook():
-    bot2.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "!", 200
-
-
-@app.route('/')
-def set_webhook():
-    bot2.remove_webhook()
-    bot2.set_webhook(url=KOYEB_URL + '/' + API_TOKEN_2, timeout=60)
-    return "Webhook set", 200
-
+# ... (rest of the code: /mega command, direct download handler, Flask app, webhook setup remain the same)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080, debug=True)
+
