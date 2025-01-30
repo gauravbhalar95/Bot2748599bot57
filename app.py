@@ -96,10 +96,10 @@ def handle_download_task(url, message):
             if streaming_url:
                 bot.reply_to(
                     message,
-                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}\n\nYou can also download it directly from the following link:\n{url}"
                 )
             else:
-                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
+                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video. However, you can try downloading it directly via the provided URL.")
         else:
             # Try sending the video
             with open(file_path, 'rb') as video:
