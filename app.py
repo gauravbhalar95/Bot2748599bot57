@@ -1,6 +1,6 @@
 import os
 import logging
-import psutil  # To monitor memory usage
+import psutil
 from flask import Flask, request
 import telebot
 import yt_dlp
@@ -10,9 +10,9 @@ import queue
 import gc
 
 # Environment variables
-API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot Token
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL for hosting
-PORT = int(os.getenv('PORT', 8080))  # Default port
+API_TOKEN = os.getenv('BOT_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+PORT = int(os.getenv('PORT', 8080))
 
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
@@ -22,10 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Supported domains
-SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
-    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
-]
+SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be']
 
 # Task queue for multi-threading
 task_queue = queue.Queue()
@@ -54,11 +51,23 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-# Download media using yt-dlp
-def download_media(url, output_dir='downloads/'):
+# Process video request
+def handle_request(url, message):
+    if not is_valid_url(url):
+        bot.reply_to(message, "Please provide a valid YouTube URL.")
+        return
+    
+    if is_memory_high():
+        streaming_url = get_streaming_url(url)
+        if streaming_url:
+            bot.reply_to(message, f"⚠️ **Memory usage is too high.**\n\n🎥 [Stream Here]({streaming_url})")
+        else:
+            bot.reply_to(message, f"⚠️ **High memory usage detected. Try downloading manually:** [Download Here]({url})")
+        return
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{output_dir}%(title)s.%(ext)s',
+        'outtmpl': 'downloads/video.%(ext)s',
         'retries': 5,
         'noplaylist': True
     }
@@ -67,45 +76,23 @@ def download_media(url, output_dir='downloads/'):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-        return file_path
-    except Exception as e:
-        logger.error(f"Error downloading media: {e}")
-        return None
 
-# Handle video requests
-def handle_request(url, message):
-    if not is_valid_url(url):
-        bot.reply_to(message, "Invalid or unsupported URL. Supported platforms: YouTube, Instagram, Twitter, Facebook.")
-        return
-
-    if is_memory_high():
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            bot.reply_to(
-                message,
-                f"⚠️ **Memory usage is too high.**\n\n"
-                f"🎥 **Stream Here:** [Click Here]({streaming_url})\n"
-                f"⬇️ **Download Here:** [Click Here]({url})",
-                parse_mode="Markdown"
-            )
+        # Check file size and send download link
+        file_size = info_dict.get('filesize', 0)
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2 GB size limit
+            streaming_url = get_streaming_url(url)
+            bot.reply_to(message, f"⚠️ **Video is too large.**\n\n🎥 [Stream Here]({streaming_url})")
         else:
-            bot.reply_to(message, f"⚠️ **High memory usage detected. Try downloading manually:** [Download Here]({url})")
-        return
-
-    try:
-        bot.reply_to(message, "Downloading video, please wait...")
-        file_path = download_media(url)
-
-        if file_path:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-            os.remove(file_path)  # Clean up after sending
-            gc.collect()  # Run garbage collection to free memory
-        else:
-            bot.reply_to(message, "Failed to download the video.")
+
+        os.remove(file_path)  # Cleanup
+        gc.collect()
+
     except Exception as e:
-        logger.error(f"Error handling the video request: {e}")
-        bot.reply_to(message, "An error occurred while processing your request.")
+        logger.error(f"Error processing request: {e}")
+        streaming_url = get_streaming_url(url)
+        bot.reply_to(message, f"⚠️ Error occurred. Try streaming the video instead: [Stream Here]({streaming_url})")
 
 # Flask app for webhook
 app = Flask(__name__)
@@ -115,13 +102,11 @@ def bot_webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "!", 200
 
-
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
     return "Webhook set", 200
-
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=PORT, debug=True)
