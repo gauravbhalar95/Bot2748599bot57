@@ -1,20 +1,23 @@
 import os
 import logging
 import queue
-import gc  # Garbage collection
+import gc
+import re
 from threading import Thread
 from urllib.parse import urlparse
-
 from flask import Flask, request
 import telebot
 import yt_dlp
-import re
+import ffmpeg  # For trimming videos
 
 # ──────────────────── 🎯 CONFIGURATION ──────────────────── #
 
 API_TOKEN = os.getenv('BOT_TOKEN')  # Telegram Bot API Token
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL for Flask
 PORT = int(os.getenv('PORT', 8080))  # Default Flask port
+COOKIES_FILE = 'cookies.txt'
+DOWNLOAD_DIR = 'downloads'
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -42,53 +45,78 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# ──────────────────── 🎥 FETCH VIDEO LINKS & THUMBNAIL ──────────────────── #
+# ──────────────────── 🎥 VIDEO DOWNLOAD & TRIM ──────────────────── #
 
 def sanitize_filename(filename, max_length=250):
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
     return filename.strip()[:max_length]
 
-def get_video_data(url):
-    """
-    Extract the **direct streaming URL**, **original download page**, and **large thumbnail**.
-    Uses yt-dlp to fetch metadata.
-    """
-    ydl_opts = {'format': 'best', 'noplaylist': True}
+def download_video(url):
+    """Download a YouTube video and return the file path."""
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return info.get('url'), info.get('webpage_url'), info.get('thumbnail')  # (Streaming URL, Download Page, Thumbnail)
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            return file_path, info_dict.get('filesize', 0)
     except Exception as e:
-        logger.error(f"Error fetching video data: {e}")
-        return None, None, None
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
+
+def trim_video(input_file, output_file, start_time, end_time):
+    """Trim a video between start_time and end_time using FFmpeg."""
+    try:
+        (
+            ffmpeg
+            .input(input_file, ss=start_time, to=end_time)
+            .output(output_file, format='mp4', codec='copy')
+            .run(overwrite_output=True)
+        )
+        return output_file
+    except Exception as e:
+        logger.error(f"Error trimming video: {e}")
+        return None
 
 # ──────────────────── 🔄 PROCESSING VIDEO REQUESTS ──────────────────── #
 
-def handle_video_task(url, message):
-    """Process a video request: fetch URLs, thumbnail & send response."""
-    streaming_url, download_url, thumbnail_url = get_video_data(url)
+def handle_video_task(url, message, start_time=None, end_time=None):
+    """Process a video request: Download, Trim (optional), and Send."""
+    file_path, file_size = download_video(url)
 
-    if not streaming_url or not download_url:
-        bot.reply_to(message, "❌ Error: Unable to fetch video details.")
+    if not file_path:
+        bot.reply_to(message, "❌ Error: Unable to download the video.")
         return
 
-    # If it's a video platform (Xvideos, Xnxx, etc.), show a large thumbnail
-    if any(domain in url for domain in ['xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']):
-        bot.send_photo(
-            chat_id=message.chat.id,
-            photo=thumbnail_url,  # High-resolution thumbnail
-            caption=f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
-                    f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
-            parse_mode="HTML"
-        )
-    else:
-        # Keep Instagram, YouTube, etc., unchanged
-        bot.reply_to(
-            message,
-            f"🎥 <b>Watch Online:</b> <a href='{streaming_url}'>Click Here</a>\n"
-            f"💾 <b>Download Video:</b> <a href='{download_url}'>Click Here</a>",
-            parse_mode="HTML"
-        )
+    try:
+        # If trimming is requested
+        if start_time is not None and end_time is not None:
+            trimmed_file = f"{DOWNLOAD_DIR}/trimmed_{os.path.basename(file_path)}"
+            trimmed_file = trim_video(file_path, trimmed_file, start_time, end_time)
+            if trimmed_file:
+                file_path = trimmed_file
+
+        # Check Telegram file size limit (50MB for bots, 2GB for premium users)
+        if file_size > 50 * 1024 * 1024:
+            bot.reply_to(message, "⚠️ The file is too large for Telegram. Try trimming it first.")
+        else:
+            with open(file_path, 'rb') as video:
+                bot.send_video(message.chat.id, video)
+    
+    except Exception as e:
+        logger.error(f"Error sending video: {e}")
+        bot.reply_to(message, f"❌ Error: {e}")
+
+    finally:
+        # Clean up downloaded files
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        gc.collect()
 
 # ──────────────────── ⚙️ BACKGROUND WORKER ──────────────────── #
 
@@ -98,8 +126,8 @@ def worker():
         task = task_queue.get()
         if task is None:
             break
-        url, message = task
-        handle_video_task(url, message)
+        url, message, start_time, end_time = task
+        handle_video_task(url, message, start_time, end_time)
         task_queue.task_done()
 
 # Start worker threads for better performance
@@ -111,7 +139,35 @@ for _ in range(4):
 @bot.message_handler(commands=['start'])
 def start(message):
     """Welcome message for the bot."""
-    bot.reply_to(message, "👋 Welcome! Send me a video link to **Watch Online** or **Download**.")
+    bot.reply_to(
+        message,
+        "👋 Welcome! Send me a video link to **Download or Trim**.\n\n"
+        "To trim a video, use the format:\n"
+        "<code>/trim &lt;URL&gt; &lt;start_time&gt; &lt;end_time&gt;</code>\n"
+        "Example: <code>/trim https://youtu.be/example 00:01:30 00:03:00</code>",
+        parse_mode="HTML"
+    )
+
+@bot.message_handler(commands=['trim'])
+def trim_command(message):
+    """Handle video trimming command."""
+    try:
+        args = message.text.split()
+        if len(args) != 4:
+            bot.reply_to(message, "⚠️ Usage: /trim <URL> <start_time> <end_time>\nExample: /trim https://youtu.be/example 00:00:30 00:01:30")
+            return
+
+        url, start_time, end_time = args[1], args[2], args[3]
+
+        if not is_valid_url(url):
+            bot.reply_to(message, "❌ Invalid or unsupported URL.")
+            return
+
+        bot.reply_to(message, "⏳ Processing your request. Please wait...")
+        task_queue.put((url, message, start_time, end_time))
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {e}")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
@@ -123,7 +179,7 @@ def handle_message(message):
         return
 
     bot.reply_to(message, "⏳ Fetching video details. Please wait...")
-    task_queue.put((url, message))
+    task_queue.put((url, message, None, None))
 
 # ──────────────────── 🌐 FLASK SERVER ──────────────────── #
 
