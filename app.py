@@ -1,45 +1,46 @@
 import os
 import logging
-import psutil
-import yt_dlp
-import ffmpeg
 from flask import Flask, request
 import telebot
+import yt_dlp
+import re
 from urllib.parse import urlparse
 from threading import Thread
 import queue
-import re
-import gc
+import gc  # Import garbage collection for memory cleanup
 
 # Environment variables
-API_TOKEN = os.getenv('BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-PORT = int(os.getenv('PORT', 8080))
+API_TOKEN = os.getenv('BOT_TOKEN')  # Bot token
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Webhook URL
+PORT = int(os.getenv('PORT', 8080))  # Default to 8080
+COOKIES_FILE = 'cookies.txt'
 
-# Initialize bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
-
-# Directories
-output_dir = 'downloads/'
-cookies_file = 'cookies.txt'
-
-# Ensure downloads directory exists
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+# Initialize the bot
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Supported domains (including adult sites as requested)
-SUPPORTED_DOMAINS = ['youtube.com', 'youtu.be', 'instagram.com', 'x.com',
-                     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']
+# Directories
+DOWNLOAD_DIR = 'downloads'
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Task queue for threading
+# Supported domains
+SUPPORTED_DOMAINS = [
+    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
+    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
+]
+
+# Task queue
 task_queue = queue.Queue()
 
+# Utility to sanitize filenames
+def sanitize_filename(filename, max_length=250):
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
 
-# Check if URL is valid
+# Validate URLs
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -47,132 +48,107 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-
-# Extract timestamps from message
-def extract_timestamps(text):
-    match = re.search(r'(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})$', text)
-    if match:
-        return match.group(1), match.group(2)
-    return None, None
-
-
-# Get video metadata (thumbnail, title, duration)
-def get_video_info(url):
-    ydl_opts = {'quiet': True}
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return {
-                "title": info.get('title', 'Unknown Title'),
-                "duration": info.get('duration', 0),
-                "thumbnail": info.get('thumbnail', None)
-            }
-    except Exception as e:
-        logger.error(f"Error fetching video info: {e}")
-        return None
-
-
-# Download and trim video
-def download_and_trim_video(url, start_time, end_time):
-    output_filename = "video.mp4"
-
-    # Download video using yt-dlp
+# Download video using yt-dlp
+def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': 'video.%(ext)s',
-        'retries': 5,
-        'cookiefile': cookies_file,
-        'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
+        'retries': 5,
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            video_filename = ydl.prepare_filename(info_dict)
-
-        # If timestamps are provided, trim the video using FFmpeg
-        if start_time and end_time:
-            trimmed_filename = "trimmed_video.mp4"
-            (
-                ffmpeg
-                .input(video_filename, ss=start_time, to=end_time)
-                .output(trimmed_filename, vcodec="libx264", acodec="aac", strict="experimental")
-                .run(overwrite_output=True)
-            )
-            os.remove(video_filename)  # Remove original video
-            return trimmed_filename
-        return video_filename
-
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get('filesize', 0)
+            return file_path, file_size
     except Exception as e:
-        logger.error(f"Error downloading/trimming video: {e}")
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
+
+# Fetch streaming URL
+def get_streaming_url(url):
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
         return None
 
+# Handle the actual download task
+def handle_download_task(url, message):
+    file_path, file_size = download_video(url)
 
-# Process video request
-def handle_request(url, message, start_time, end_time):
-    video_info = get_video_info(url)
+    if not file_path:
+        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
+        return
 
-    if video_info and video_info["thumbnail"]:
-        bot.send_photo(
-            message.chat.id, 
-            video_info["thumbnail"], 
-            caption=f"🎬 **{video_info['title']}**\n⏳ Duration: {video_info['duration']} sec\n\n"
-                    f"🔄 **Processing your request...**"
-        )
-    else:
-        bot.reply_to(message, "⏳ **Processing your request...** Please wait.")
-
-    video_file = download_and_trim_video(url, start_time, end_time)
-
-    if video_file:
-        with open(video_file, 'rb') as video:
-            bot.send_video(message.chat.id, video)
-
-        os.remove(video_file)  # Delete file after sending
+    try:
+        # Check if the file size exceeds Telegram's limit (2GB)
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB
+            streaming_url = get_streaming_url(url)
+            if streaming_url:
+                bot.reply_to(
+                    message,
+                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                )
+            else:
+                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
+        else:
+            # Try sending the video
+            with open(file_path, 'rb') as video:
+                bot.send_video(message.chat.id, video)
+    except Exception as e:
+        logger.error(f"Error sending video: {e}")
+        streaming_url = get_streaming_url(url)
+        if streaming_url:
+            bot.reply_to(
+                message,
+                f"The video is too large to send directly on Telegram. Here is the streaming link:\n{streaming_url}"
+            )
+        else:
+            bot.reply_to(message, f"Error: {e}")
+    finally:
+        # Clean up the downloaded file and memory
+        if os.path.exists(file_path):
+            os.remove(file_path)
         gc.collect()
-    else:
-        bot.reply_to(message, "⚠️ **Failed to process video.** Please try again later.")
 
-
-# Worker thread for handling tasks
+# Worker function to process download tasks
 def worker():
     while True:
         task = task_queue.get()
         if task is None:
             break
-        url, message, start_time, end_time = task
-        handle_request(url, message, start_time, end_time)
+        url, message = task
+        handle_download_task(url, message)
         task_queue.task_done()
 
-
 # Start worker threads
-for _ in range(4):
+for _ in range(4):  # Adjust the number of threads as needed
     Thread(target=worker, daemon=True).start()
-
 
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 **Welcome!**\nSend a YouTube link with timestamps to trim, or just the link to download full video.")
+    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
-
-# Handle YouTube video download requests with trimming
+# Handle video download
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
-    text = message.text.strip()
-
-    if not is_valid_url(text):
-        bot.reply_to(message, "❌ **Invalid or unsupported URL.**")
+    url = message.text.strip()
+    if not is_valid_url(url):
+        bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    url, start_time, end_time = text, None, None
-
-    if "youtube.com" in text or "youtu.be" in text:
-        url, start_time, end_time = re.split(r'\s+', text, maxsplit=1)[0], *extract_timestamps(text)
-
-    task_queue.put((url, message, start_time, end_time))
-
+    bot.reply_to(message, "Processing your request. Please wait...")
+    task_queue.put((url, message))
 
 # Flask app for webhook
 app = Flask(__name__)
@@ -186,8 +162,7 @@ def webhook():
 def set_webhook():
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "✅ Webhook set", 200
-
+    return "Webhook set", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT)
