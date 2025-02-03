@@ -64,6 +64,7 @@ def get_streaming_url(url):
         return None
 
 # Download video using yt-dlp
+# Download video using yt-dlp
 def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -71,6 +72,8 @@ def download_video(url):
         'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
+        'logger': logger,  # Add logger to yt-dlp options
+        'verbose': True,  # Enable verbose logging
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -79,6 +82,7 @@ def download_video(url):
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
+    
 
 # Command: /start
 @bot.message_handler(commands=['start'])
